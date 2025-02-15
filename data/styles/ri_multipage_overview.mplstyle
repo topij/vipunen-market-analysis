@@ -1,0 +1,43 @@
+# Matplotlib stylesheet for multi-subplot overview
+# ri_multipage_overview.mplstyle
+
+# Font settings
+font.family: Arial
+font.size: 12
+
+# Set line styling for line plots
+lines.linewidth: 5             # line width in points
+lines.solid_capstyle: butt      # Makes a square ending of the line stopping at datapoint
+
+
+# Tick settings
+xtick.major.size: 0
+xtick.major.width: 0
+xtick.labelsize: 0
+ytick.major.size: 2
+ytick.major.width: 0.5
+ytick.labelsize: 10
+
+# Move tick labels to right side
+ytick.labelleft: True          # draw tick labels on the left side
+ytick.labelright: False          # draw tick labels on the right side
+#ytick.alignment: bottom         # alignment of yticks
+
+# Spines
+axes.spines.bottom: True
+axes.spines.top: False
+axes.spines.left: True
+axes.spines.right: False
+#axes.spines.bottom.linewidth: 0.5
+#axes.spines.left.linewidth: 0.5
+
+# Title styling
+#axes.titlelocation: left        # alignment of the title: {left, right, center}
+#axes.titlesize: 18              # font size of the axes title
+#axes.titleweight: bold          # font weight of title
+#axes.titlepad: 20               # pad between axes and title in points
+
+# Colors (based on your earlier brand colors)
+axes.prop_cycle: cycler('color', ['7dc35a', '006e82', '674da1', '7eafbb', 'e86b3d', '00b5e2', '7dc35a', '00263a'])
+
+---

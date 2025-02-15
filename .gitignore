@@ -175,10 +175,20 @@ cython_debug/
 _archive/
 old_code/
 *.xlsx
+*.pptx
+*.ppt
 *.csv
 *.json
 *.txt
 *.pyc
+*.png
+*.pdf
+*.html
+*.css
+*.js
+*.xml
+*.zip
+
 
 # Don't ignore the following files
 !fi.txt

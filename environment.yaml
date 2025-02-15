@@ -14,6 +14,10 @@ dependencies:
   - python-dotenv>=1.0.0
   - openpyxl>=3.1.0  # For Excel file handling
   - pyarrow>=14.0.1  # For parquet file support
+
+  # presentations
+  - python-pptx
+  - xlsxwriter
   
   # Text processing
   - scikit-learn>=1.2.0

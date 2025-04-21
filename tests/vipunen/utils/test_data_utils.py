@@ -12,81 +12,90 @@ from vipunen.utils.data_utils import (
 
 @pytest.fixture
 def sample_data():
-    """Create sample DataFrame for testing."""
-    return pd.DataFrame({
+    """Create sample data for testing."""
+    data = {
+        'Column Name': [1, 2, 3],
+        'Another Column': ['4', '5', 'invalid'],
+        'Missing Data': [1.0, np.nan, 3.0],
         'Year': [2020, 2021, 2022],
-        'Student Count': [100, 150, 200],
-        'Provider Name': ['A', 'B', 'C'],
-        'Numeric String': ['10', '20', '30'],
-        'Mixed Values': ['10', '20', 'invalid']
-    })
+        'Value': [100, 200, 300]
+    }
+    return pd.DataFrame(data)
 
 def test_clean_column_names(sample_data):
-    """Test cleaning column names."""
-    cleaned = clean_column_names(sample_data)
-    assert all(col == col.lower().replace(' ', '_') for col in cleaned.columns)
+    """Test column name cleaning."""
+    result = clean_column_names(sample_data)
+    expected_columns = {
+        'column_name',
+        'another_column',
+        'missing_data',
+        'year',
+        'value'
+    }
+    assert set(result.columns) == expected_columns
 
 def test_convert_to_numeric(sample_data):
-    """Test converting columns to numeric."""
-    # Test with specific columns
-    converted = convert_to_numeric(sample_data, columns=['Numeric String'])
-    assert pd.api.types.is_numeric_dtype(converted['Numeric String'])
-    
-    # Test with mixed values
-    converted = convert_to_numeric(sample_data, columns=['Mixed Values'])
-    assert pd.api.types.is_numeric_dtype(converted['Mixed Values'])
-    assert converted['Mixed Values'].isna().sum() == 1
+    """Test numeric conversion."""
+    result = convert_to_numeric(sample_data, ['Another Column'])
+    assert pd.api.types.is_numeric_dtype(result['Another Column'])
+    assert pd.isna(result.loc[2, 'Another Column'])  # 'invalid' should be converted to NaN
+    assert result.loc[0, 'Another Column'] == 4.0
 
-def test_handle_missing_values():
-    """Test handling missing values."""
-    df = pd.DataFrame({
-        'A': [1, np.nan, 3],
-        'B': [4, 5, np.nan]
-    })
-    
+def test_handle_missing_values(sample_data):
+    """Test missing value handling."""
     # Test drop method
-    dropped = handle_missing_values(df, method='drop')
-    assert dropped.shape[0] == 1
+    result_drop = handle_missing_values(sample_data.copy(), method='drop')
+    assert len(result_drop) == 2  # One row had NaN
     
     # Test fill method
-    filled = handle_missing_values(df, method='fill')
-    assert filled.isna().sum().sum() == 0
+    result_fill = handle_missing_values(sample_data.copy(), method='fill')
+    assert result_fill['Missing Data'].isna().sum() == 0
+    assert result_fill.loc[1, 'Missing Data'] == 0
     
     # Test interpolate method
-    interpolated = handle_missing_values(df, method='interpolate')
-    assert interpolated.isna().sum().sum() == 0
+    result_interp = handle_missing_values(sample_data.copy(), method='interpolate')
+    assert result_interp['Missing Data'].isna().sum() == 0
+    assert result_interp.loc[1, 'Missing Data'] == 2.0  # Should be interpolated between 1 and 3
 
 def test_filter_by_year(sample_data):
-    """Test filtering by year range."""
-    # Test start year
-    filtered = filter_by_year(sample_data, 'Year', start_year=2021)
-    assert filtered['Year'].min() == 2021
-    
-    # Test end year
-    filtered = filter_by_year(sample_data, 'Year', end_year=2021)
-    assert filtered['Year'].max() == 2021
-    
-    # Test both
-    filtered = filter_by_year(sample_data, 'Year', start_year=2021, end_year=2021)
-    assert len(filtered) == 1
-    assert filtered['Year'].iloc[0] == 2021
-
-def test_aggregate_data(sample_data):
-    """Test data aggregation."""
-    # Test simple sum
-    aggregated = aggregate_data(
-        sample_data,
-        group_cols=['Provider Name'],
-        value_cols=['Student Count']
+    """Test year filtering."""
+    result = filter_by_year(
+        df=sample_data,
+        year_col='Year',
+        start_year=2021,
+        end_year=2022
     )
-    assert len(aggregated) == 3
+    assert len(result) == 2
+    assert result['Year'].min() == 2021
+    assert result['Year'].max() == 2022
+
+def test_aggregate_data():
+    """Test data aggregation."""
+    data = pd.DataFrame({
+        'group': ['A', 'A', 'B', 'B'],
+        'subgroup': ['X', 'Y', 'X', 'Y'],
+        'value1': [1, 2, 3, 4],
+        'value2': [10, 20, 30, 40]
+    })
     
-    # Test multiple aggregation functions
-    aggregated = aggregate_data(
-        sample_data,
-        group_cols=['Provider Name'],
-        value_cols=['Student Count'],
+    result = aggregate_data(
+        df=data,
+        group_cols=['group'],
+        value_cols=['value1', 'value2'],
         agg_func=['sum', 'mean']
     )
-    assert 'Student Count_sum' in aggregated.columns
-    assert 'Student Count_mean' in aggregated.columns 
+    
+    # Check structure
+    expected_columns = {
+        'group',
+        'value1_sum', 'value1_mean',
+        'value2_sum', 'value2_mean'
+    }
+    assert set(result.columns) == expected_columns
+    
+    # Check values
+    group_a = result[result['group'] == 'A'].iloc[0]
+    assert group_a['value1_sum'] == 3  # 1 + 2
+    assert group_a['value1_mean'] == 1.5  # (1 + 2) / 2
+    assert group_a['value2_sum'] == 30  # 10 + 20
+    assert group_a['value2_mean'] == 15  # (10 + 20) / 2 

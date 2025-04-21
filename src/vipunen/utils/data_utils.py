@@ -61,7 +61,15 @@ def handle_missing_values(df: pd.DataFrame,
     elif method == 'fill':
         df[columns] = df[columns].fillna(0)
     elif method == 'interpolate':
-        df[columns] = df[columns].interpolate()
+        # Convert numeric columns before interpolation
+        numeric_cols = df[columns].select_dtypes(include=['number']).columns
+        if len(numeric_cols) > 0:
+            df[numeric_cols] = df[numeric_cols].interpolate()
+        
+        # Fill non-numeric columns with forward fill
+        non_numeric_cols = [col for col in columns if col not in numeric_cols]
+        if len(non_numeric_cols) > 0:
+            df[non_numeric_cols] = df[non_numeric_cols].ffill()
     else:
         raise ValueError(f"Invalid method: {method}")
         

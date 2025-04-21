@@ -65,9 +65,10 @@ def main():
         logger.info("Performing market analysis...")
         market_analysis = analyze_market(
             df=df,
-            group_cols=['tilastovuosi', 'tutkinto'],
+            group_cols=['tutkinto'],
             value_col='opiskelijatlkm',
             provider_col='koulutuksenjarjestaja',
+            year_col='tilastovuosi',
             min_years=2
         )
         

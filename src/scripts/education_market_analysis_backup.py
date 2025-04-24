@@ -60,7 +60,7 @@ import shutil
 sys.path.append(str(Path(__file__).resolve().parents[2]))
 
 from vipunen.analysis.education_market import EducationMarketAnalyzer
-from vipunen.visualization.education_visualizer import EducationVisualizer, COLOR_PALETTES, TEXT_CONSTANTS
+from vipunen.visualization.education_visualizer import EducationVisualizer
 
 # Try to import FileUtils, but use a fallback if not available
 try:
@@ -836,7 +836,7 @@ def plot_market_share_heatmap(market_share_df, output_path=None, institution_sho
     try:
         # Initialize the visualizer
         style_dir = ROOT_DIR / "styles" if hasattr(ROOT_DIR, "parents") else None
-        visualizer = EducationVisualizer(style_dir=style_dir)
+        visualizer = EducationVisualizer(style_directory=style_dir)
         
         # Check if dataframe is empty
         if market_share_df.empty:
@@ -876,12 +876,11 @@ def plot_market_share_heatmap(market_share_df, output_path=None, institution_sho
             caption=caption,
             cmap=COLOR_PALETTES['market_share'],
             fmt='.1f',
-            annot=True
+            annot=True,
+            vmin=0,
+            vmax=100,
+            cbar_label="Market Share (%)"
         )
-        
-        # Manually add a colorbar with a label since the visualizer doesn't support cbar_label
-        cbar = fig.colorbar(ax.collections[0], ax=ax, pad=0.01)
-        cbar.set_label("Market Share (%)", rotation=270, labelpad=20)
         
         # Save the plot if an output path is provided
         if output_path:
@@ -954,67 +953,6 @@ def plot_qualification_market_shares(volumes_df, institution_names, output_path=
         import traceback
         traceback.print_exc()
         return None, None
-
-def calculate_total_volumes(df, provider_names, year_col='tilastovuosi', 
-                        provider_col='koulutuksenJarjestaja', subcontractor_col='hankintakoulutuksenJarjestaja',
-                        value_col='nettoopiskelijamaaraLkm'):
-    """
-    Calculate total volumes for a provider, properly accounting for both roles.
-    
-    Args:
-        df: DataFrame containing the data
-        provider_names: List of names for the provider being analyzed
-        year_col: Column containing year information
-        provider_col: Column containing main provider names
-        subcontractor_col: Column containing subcontractor names
-        value_col: Column containing volume values
-        
-    Returns:
-        pd.DataFrame: Summary DataFrame with volume breakdowns by year
-    """
-    # Create a copy of the dataframe to avoid modifying the original
-    df_copy = df.copy()
-    
-    # Ensure provider_names is a list
-    if isinstance(provider_names, str):
-        provider_names = [provider_names]
-    
-    # Create a dictionary to store results by year
-    results = {}
-    
-    # Group by year to calculate volumes
-    for year, year_df in df_copy.groupby(year_col):
-        # For main provider role
-        main_provider_data = year_df[year_df[provider_col].isin(provider_names)]
-        main_volume = main_provider_data[value_col].sum()
-        
-        # For subcontractor role
-        subcontractor_data = year_df[year_df[subcontractor_col].isin(provider_names)]
-        sub_volume = subcontractor_data[value_col].sum()
-        
-        # Total volume is the sum of both roles
-        total_volume = main_volume + sub_volume
-        
-        # Calculate percentage as main provider
-        main_percentage = (main_volume / total_volume * 100) if total_volume > 0 else 0
-        
-        # Store results for this year
-        results[year] = {
-            'kouluttaja': 'RI',  # Will be overridden later
-            'järjestäjänä': main_volume,
-            'hankintana': sub_volume,
-            'Yhteensä': total_volume,
-            'järjestäjä_osuus (%)': main_percentage
-        }
-    
-    # Convert to DataFrame
-    result_df = pd.DataFrame.from_dict(results, orient='index').reset_index()
-    result_df = result_df.rename(columns={'index': year_col})
-    
-    # Sort by year
-    result_df = result_df.sort_values(year_col)
-    
-    return result_df
 
 def run_analysis(
     data_file_path,
@@ -1092,10 +1030,7 @@ def run_analysis(
         # Step 1-2: Calculate total volumes
         print("Analyzing total volumes...")
         try:
-            volumes_df = calculate_total_volumes(
-                df=prepared_data, 
-                provider_names=institution_names
-            )
+            volumes_df = analyzer.analyze_total_volume()
             volumes_df['kouluttaja'] = institution_short_name  # Use provided short name
             results['volumes'] = volumes_df
             
@@ -1173,6 +1108,46 @@ def run_analysis(
         try:
             role_analysis = analyzer.analyze_institution_roles()
             results['role_analysis'] = role_analysis
+            
+            if not role_analysis.empty:
+                excel_data["Institution Roles"] = role_analysis
+                
+            if not market_shares.empty:
+                # Include the full market share data
+                excel_data["Market Shares"] = market_shares
+                
+                # Also create a filtered version with just the target institution's data
+                target_market_shares = market_shares[market_shares['is_target_provider'] == True].copy()
+                if not target_market_shares.empty:
+                    excel_data[f"{institution_short_name} Market Shares"] = target_market_shares
+            
+            # Convert top providers dictionary to DataFrame for export if we have data
+            if top_providers:
+                top_providers_df = pd.DataFrame([
+                    {'qualification': qual, 'top_providers': ', '.join(providers)}
+                    for qual, providers in top_providers.items()
+                ])
+                excel_data["Top Providers"] = top_providers_df
+            
+            # Save the Excel file to the institution-specific output directory
+            try:
+                # Fallback: Use pandas directly to save Excel file
+                timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+                excel_path = output_dir / f"{prefix}_market_analysis_{timestamp}.xlsx"
+                
+                # Ensure directory exists
+                os.makedirs(output_dir, exist_ok=True)
+                
+                # Create Excel writer
+                with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+                    for sheet_name, sheet_data in excel_data.items():
+                        sheet_data.to_excel(writer, sheet_name=sheet_name, index=True)
+                
+                print(f"Analysis results saved to {excel_path}")
+            
+            except Exception as e:
+                print(f"Error saving Excel file: {e}")
+                print("This might happen if you don't have openpyxl installed. To install it, run: pip install openpyxl")
         except Exception as e:
             print(f"Error analyzing institution roles: {e}")
             role_analysis = pd.DataFrame()

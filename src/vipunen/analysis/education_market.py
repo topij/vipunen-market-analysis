@@ -80,7 +80,11 @@ def calculate_cagr_for_groups(
             # Get the first and last value and the number of periods (years)
             end_value = group[value_column].iloc[-1]
             start_value = group[value_column].iloc[0]
-            periods = group['tilastovuosi'].iloc[-1] - group['tilastovuosi'].iloc[0]
+            
+            # Track the actual first and last year offered
+            first_year_offered = group['tilastovuosi'].iloc[0]
+            last_year_offered = group['tilastovuosi'].iloc[-1]
+            periods = last_year_offered - first_year_offered
             
             # Handle special or extreme cases for CAGR calculation
             if start_value == 0 and end_value == 0:
@@ -106,6 +110,8 @@ def calculate_cagr_for_groups(
                 cagr_dict = {groupby_columns[0]: name}
             
             cagr_dict['CAGR'] = cagr
+            cagr_dict['First Year Offered'] = first_year_offered
+            cagr_dict['Last Year Offered'] = last_year_offered
             cagr_list.append(pd.DataFrame([cagr_dict]))
     
     # Combine all individual CAGR DataFrames
@@ -113,7 +119,7 @@ def calculate_cagr_for_groups(
         return pd.concat(cagr_list, ignore_index=True)
     else:
         # Return an empty DataFrame with appropriate columns if no CAGR could be calculated
-        columns = groupby_columns + ['CAGR']
+        columns = groupby_columns + ['CAGR', 'First Year Offered', 'Last Year Offered']
         return pd.DataFrame(columns=columns)
 
 def calculate_yoy_growth(
@@ -570,12 +576,16 @@ class EducationMarketAnalyzer:
             value_column=self.volume_col
         )
         
-        # Add year range information
-        cagr_results['start_year'] = start_year
-        cagr_results['end_year'] = end_year
-        cagr_results['year_range'] = f"{start_year}-{end_year}"
+        # The start_year and end_year are now replaced by First Year Offered and Last Year Offered
+        # which are calculated within calculate_cagr_for_groups based on actual years present
         
-        logger.info(f"Calculated CAGR for {len(cagr_results)} qualifications from {start_year} to {end_year}")
+        # Add year range information for consistency with previous versions
+        cagr_results['year_range'] = cagr_results.apply(
+            lambda row: f"{row['First Year Offered']}-{row['Last Year Offered']}",
+            axis=1
+        )
+        
+        logger.info(f"Calculated CAGR for {len(cagr_results)} qualifications based on actual years offered")
         return cagr_results
     
     def calculate_yearly_growth(self, target_column: str, year: int, time_window: int = 3) -> pd.DataFrame:
@@ -674,6 +684,9 @@ class EducationMarketAnalyzer:
             nom_as_jarjestaja=self.volume_col,
             nom_as_hankinta=self.volume_col
         )
+        
+        # Filter out rows where the total is zero
+        role_analysis = role_analysis[role_analysis['Yhteensä'] > 0]
         
         logger.info(f"Analyzed institution roles across {len(role_analysis)} years")
         return role_analysis

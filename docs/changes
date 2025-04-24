@@ -1,0 +1,29 @@
+Total volumes
+- no change
+
+Volumes as Provider and Volumes as Subcontractor 
+- there is no qualification column in the data. 
+- what if we turn this into a long format table type? First column is the year, second column is the qualification, third column is the provider amound and fourth column is the subcontractor amount.
+
+Volumes by Qualification
+- make two separate tables or worksheets: one for the nettoopiskelijamaaraLkm as provider and one as the subcontractor
+
+CAGR by Qualification
+- There are two new columns: First Year Offered	and Last Year Offered
+- however, they are empty.
+
+Prev YoY Growth
+- no change
+
+Market Shares (Current Quals)
+- There are no new column for the market share gain: I'd like to add a a YoY market share gainers and losers table. One column which shows the YoY change in market share and one column that shows the gainers rank (institution with the biggest gain ranked 1)
+- remove "is_target_provider" column
+
+RI Market Shares
+- remove "is_target_provider" column
+
+Market Share Changes
+- no change
+
+Identifying top providers by qualification...
+2025-04-24 19:42:36,975 - vipunen.analysis.education_market - INFO - Filtered data to 34230 rows for degree types: ['Ammattitutkinnot', 'Erikoisammattitutkinnot']

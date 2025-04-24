@@ -9,6 +9,9 @@ This script allows you to analyze education market data for any educational
 institution in Finland. The default is set to Rastor-instituutti for 
 backward compatibility, but can be easily changed to analyze any institution.
 
+By default, the analysis includes all qualification types. You can optionally filter 
+to include only 'ammattitutkinto' and 'erikoisammattitutkinto' types.
+
 The implementation now uses the FileUtils package for standardized file operations,
 providing several benefits:
 - Automatic format detection for input files
@@ -34,8 +37,8 @@ Usage examples:
     # Specify a custom output directory
     python education_market_analysis.py --output-dir ~/reports/education_analysis
     
-    # Disable degree type filtering
-    python education_market_analysis.py --no-filter-degree-types
+    # Filter to include only ammattitutkinto and erikoisammattitutkinto
+    python education_market_analysis.py --filter-degree-types
     
     # Specify a different data file (in the data directory)
     python education_market_analysis.py --data-file custom_education_data.csv
@@ -210,6 +213,11 @@ def clean_and_prepare_data(df, institution_names=None, merge_qualifications=True
     # Make a copy of the dataframe to avoid modifying the original
     cleaned_df = df.copy()
     
+    # Replace "Tieto puuttuu" with NaN in the hankintakoulutuksenJarjestaja column
+    if 'hankintakoulutuksenJarjestaja' in cleaned_df.columns:
+        cleaned_df['hankintakoulutuksenJarjestaja'] = cleaned_df['hankintakoulutuksenJarjestaja'].replace('Tieto puuttuu', pd.NA)
+        print("Replaced 'Tieto puuttuu' with NaN in hankintakoulutuksenJarjestaja column")
+    
     # Replace institution names if needed
     if institution_names:
         institution_replacements = {institution_names[0]: institution_names}
@@ -303,7 +311,7 @@ def calculate_market_shares(df, provider_names, year_col='tilastovuosi', qual_co
             # Calculate volume as subcontractor
             sub_volume = 0
             if subcontractor_col in group_df.columns:
-                sub_volume = group_df[group_df[subcontractor_col] == provider][value_col].sum()
+                sub_volume = group_df[(group_df[subcontractor_col] == provider) & (pd.notna(group_df[subcontractor_col]))][value_col].sum()
             
             # Total provider volume
             provider_volume = main_volume + sub_volume
@@ -988,8 +996,8 @@ def calculate_total_volumes(df, provider_names, year_col='tilastovuosi',
         main_provider_data = year_df[year_df[provider_col].isin(provider_names)]
         main_volume = main_provider_data[value_col].sum()
         
-        # For subcontractor role
-        subcontractor_data = year_df[year_df[subcontractor_col].isin(provider_names)]
+        # For subcontractor role - only count rows where subcontractor is not NaN
+        subcontractor_data = year_df[(year_df[subcontractor_col].isin(provider_names)) & (pd.notna(year_df[subcontractor_col]))]
         sub_volume = subcontractor_data[value_col].sum()
         
         # Total volume is the sum of both roles
@@ -1021,7 +1029,7 @@ def run_analysis(
     institution_names,
     institution_short_name=None,
     output_dir=None,
-    filter_degree_types=True,
+    filter_degree_types=False,
     reference_year=None,
     shorten_names=True
 ):
@@ -1033,7 +1041,7 @@ def run_analysis(
         institution_names: List of names for the institution to analyze
         institution_short_name: Short name for the institution (used in plots and file naming)
         output_dir: Directory to save output files (default: data/reports/education_market_[institution_short_name])
-        filter_degree_types: Whether to filter by degree types
+        filter_degree_types: Whether to filter by degree types (default: False - include all qualification types)
         reference_year: Year to use as reference for qualification selection
         shorten_names: Whether to shorten qualification names
         
@@ -1259,40 +1267,165 @@ def run_analysis(
         if any([not df.empty if isinstance(df, pd.DataFrame) else bool(df) for df in results.values()]):
             print("Saving results to Excel...")
             
-            # Prepare data dictionary for Excel output - only include non-empty DataFrames
-            excel_data = {}
-            
-            if not volumes_df.empty:
-                excel_data["Total Volumes"] = volumes_df
-            
-            if not volumes_by_qual.empty:
-                excel_data["Volumes by Qualification"] = volumes_by_qual
-            
-            if not qualification_cagr.empty:
-                excel_data["CAGR by Qualification"] = qualification_cagr
-            
-            if not yoy_growth.empty:
-                excel_data["YoY Growth"] = yoy_growth
-            
-            if not role_analysis.empty:
-                excel_data["Institution Roles"] = role_analysis
-            
-            if not market_shares.empty:
-                # Include the full market share data
-                excel_data["Market Shares"] = market_shares
+            # Prepare data for Excel export
+            try:
+                excel_data = {}
                 
-                # Also create a filtered version with just the target institution's data
-                target_market_shares = market_shares[market_shares['is_target_provider'] == True].copy()
-                if not target_market_shares.empty:
-                    excel_data[f"{institution_short_name} Market Shares"] = target_market_shares
+                # First add Total Volumes if available
+                if not volumes_df.empty:
+                    # Remove the index column by resetting index and dropping it
+                    excel_data["Total Volumes"] = volumes_df.reset_index(drop=True)
+                
+                # Add Volumes by Role if available
+                if not role_analysis.empty:
+                    # Instead of using role_analysis which aggregates all qualifications,
+                    # we need to get detailed data by qualification
+                    
+                    # Use analyzer to get volumes by qualification and year
+                    qualification_volumes = analyzer.analyze_volumes_by_qualification()
+                    
+                    if not qualification_volumes.empty:
+                        # Prepare a new DataFrame for the long format table
+                        volumes_by_qual_role = []
+                        
+                        # Get the volume column names from analyze_volumes_by_qualification
+                        # These are typically named with a pattern like '2022_järjestäjänä', '2022_hankintana'
+                        years = sorted(list(set([int(col.split('_')[0]) for col in qualification_volumes.columns if '_' in col])))
+                        
+                        # Process each qualification
+                        for _, row in qualification_volumes.iterrows():
+                            qualification = row['tutkinto']
+                            
+                            # For each year, get provider and subcontractor amounts
+                            for year in years:
+                                provider_col = f"{year}_järjestäjänä"
+                                subcontractor_col = f"{year}_hankintana"
+                                
+                                # Check if the columns exist for this year
+                                if provider_col in qualification_volumes.columns and subcontractor_col in qualification_volumes.columns:
+                                    provider_amount = row.get(provider_col, 0)
+                                    subcontractor_amount = row.get(subcontractor_col, 0)
+                                    
+                                    # Only add rows where at least one amount is greater than 0
+                                    if provider_amount > 0 or subcontractor_amount > 0:
+                                        volumes_by_qual_role.append({
+                                            'Year': year,
+                                            'Qualification': qualification,
+                                            'Provider Amount': int(provider_amount),
+                                            'Subcontractor Amount': int(subcontractor_amount),
+                                            'Total': int(provider_amount + subcontractor_amount),
+                                            'Provider Role %': round((provider_amount / (provider_amount + subcontractor_amount) * 100), 2) if (provider_amount + subcontractor_amount) > 0 else 0
+                                        })
+                        
+                        # Convert to DataFrame
+                        volumes_by_role = pd.DataFrame(volumes_by_qual_role)
+                        
+                        # Sort by year then qualification
+                        if not volumes_by_role.empty:
+                            volumes_by_role = volumes_by_role.sort_values(['Year', 'Qualification'])
+                            
+                            # Add to Excel data
+                            excel_data["Volumes by Role"] = volumes_by_role
+                            print(f"Added Volumes by Role with {len(volumes_by_role)} rows")
+                        else:
+                            print("Warning: Could not create Volumes by Role - no data available")
+                    else:
+                        print("Warning: No qualification volume data available for Volumes by Role sheet")
+                else:
+                    print("Warning: No role analysis data available for Volumes by Role sheet")
+                
+                # Add CAGR by Qualification if available
+                if not qualification_cagr.empty:
+                    # Use the CAGR data as is, with the First Year Offered and Last Year Offered columns
+                    # already calculated in the calculate_cagr_for_groups function
+                    excel_data["CAGR by Qualification"] = qualification_cagr
+                    print(f"Added CAGR by Qualification with {len(qualification_cagr)} rows")
+                
+                if not yoy_growth.empty:
+                    # Rename the sheet to indicate it's previous year growth
+                    excel_data["Prev YoY Growth"] = yoy_growth
+                    print(f"Added Prev YoY Growth with {len(yoy_growth)} rows")
+                
+                # Note: Institution Roles is removed as requested (redundant with Total Volumes)
+                
+                if not market_shares.empty:
+                    # Get current year and previous year
+                    current_year = market_shares['tilastovuosi'].max()
+                    previous_year = current_year - 1
+                    
+                    # Get qualifications offered in current and previous year
+                    current_quals = market_shares[
+                        (market_shares['is_target_provider'] == True) & 
+                        (market_shares['tilastovuosi'].isin([current_year, previous_year]))
+                    ]['tutkinto'].unique()
+                    
+                    # Filter market shares to only include current qualifications
+                    current_market_shares = market_shares[market_shares['tutkinto'].isin(current_quals)].copy()
+                    
+                    # Remove the is_target_provider column as requested
+                    if 'is_target_provider' in current_market_shares.columns:
+                        current_market_shares = current_market_shares.drop(columns=['is_target_provider'])
+                    
+                    # Include the filtered market share data
+                    excel_data["Market Shares (Current Quals)"] = current_market_shares
+                    print(f"Added Market Shares (Current Quals) with {len(current_market_shares)} rows")
+                    
+                    # Create filtered version with just the target institution's data
+                    target_market_shares = market_shares[
+                        (market_shares['is_target_provider'] == True) & 
+                        (market_shares['tutkinto'].isin(current_quals))
+                    ].copy()
+                    
+                    if not target_market_shares.empty:
+                        # Remove the is_target_provider column as requested
+                        if 'is_target_provider' in target_market_shares.columns:
+                            target_market_shares = target_market_shares.drop(columns=['is_target_provider'])
+                        
+                        excel_data[f"{institution_short_name} Market Shares"] = target_market_shares
+                        print(f"Added {institution_short_name} Market Shares with {len(target_market_shares)} rows")
+                    
+                    # Create YoY market share gainers and losers table
+                    if current_year > previous_year and previous_year in market_shares['tilastovuosi'].unique():
+                        try:
+                            # Get data for current and previous year
+                            current_year_data = market_shares[(market_shares['tilastovuosi'] == current_year) & 
+                                                          (market_shares['tutkinto'].isin(current_quals))].copy()
+                            prev_year_data = market_shares[(market_shares['tilastovuosi'] == previous_year) & 
+                                                       (market_shares['tutkinto'].isin(current_quals))].copy()
+                            
+                            # Prepare data for merge
+                            current_year_data = current_year_data[['tutkinto', 'provider', 'market_share']].rename(
+                                columns={'market_share': 'current_share'})
+                            prev_year_data = prev_year_data[['tutkinto', 'provider', 'market_share']].rename(
+                                columns={'market_share': 'previous_share'})
+                            
+                            # Merge data
+                            market_share_change = pd.merge(
+                                current_year_data, 
+                                prev_year_data, 
+                                on=['tutkinto', 'provider'], 
+                                how='inner'
+                            )
+                            
+                            # Calculate YoY change
+                            market_share_change['market_share_change'] = market_share_change['current_share'] - market_share_change['previous_share']
+                            
+                            # Add year columns for clarity
+                            market_share_change['current_year'] = current_year
+                            market_share_change['previous_year'] = previous_year
+                            
+                            # Rank gainers by qualification
+                            market_share_change['gainer_rank'] = market_share_change.groupby('tutkinto')['market_share_change'].rank(ascending=False)
+                            
+                            # Add to Excel data
+                            excel_data["Market Share Changes"] = market_share_change
+                            print(f"Added Market Share Changes with {len(market_share_change)} rows")
+                        except Exception as e:
+                            print(f"Warning: Could not create market share change table - {e}")
+            except Exception as e:
+                print(f"Error preparing Excel data: {e}")
             
-            # Convert top providers dictionary to DataFrame for export if we have data
-            if top_providers:
-                top_providers_df = pd.DataFrame([
-                    {'qualification': qual, 'top_providers': ', '.join(providers)}
-                    for qual, providers in top_providers.items()
-                ])
-                excel_data["Top Providers"] = top_providers_df
+            # Note: Top Providers is removed as requested
             
             # Save the Excel file to the institution-specific output directory
             try:
@@ -1306,7 +1439,25 @@ def run_analysis(
                 # Create Excel writer
                 with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
                     for sheet_name, sheet_data in excel_data.items():
-                        sheet_data.to_excel(writer, sheet_name=sheet_name, index=True)
+                        # Make sure we're dealing with a DataFrame that has the right structure
+                        try:
+                            # First reset the index if it's not already a default integer index
+                            if not isinstance(sheet_data.index, pd.RangeIndex):
+                                sheet_data = sheet_data.reset_index()
+                            sheet_data.to_excel(writer, sheet_name=sheet_name, index=False)
+                        except Exception as e:
+                            print(f"Warning: Error saving sheet '{sheet_name}' to Excel: {e}")
+                            # Try again with a safer approach
+                            try:
+                                # Create a fresh DataFrame with only the data
+                                safe_df = pd.DataFrame(sheet_data.values)
+                                # If we have column names, use them
+                                if hasattr(sheet_data, 'columns'):
+                                    safe_df.columns = sheet_data.columns
+                                safe_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                                print(f"Successfully saved sheet '{sheet_name}' using fallback method")
+                            except Exception as e2:
+                                print(f"Failed to save sheet '{sheet_name}' to Excel: {e2}")
                 
                 print(f"Analysis results saved to {excel_path}")
             
@@ -1338,10 +1489,10 @@ def main():
                         help='Short name for the institution (used in plots and file naming)')
     parser.add_argument('--reference-year', type=int, 
                         help='Reference year for qualification selection')
-    parser.add_argument('--filter-degree-types', action='store_true', default=True,
-                        help='Whether to filter by degree types')
+    parser.add_argument('--filter-degree-types', action='store_true', default=False,
+                        help='Whether to filter by degree types (only ammattitutkinto and erikoisammattitutkinto)')
     parser.add_argument('--no-filter-degree-types', action='store_false', dest='filter_degree_types',
-                        help='Disable filtering by degree types')
+                        help='Disable filtering by degree types (include all qualification types)')
     parser.add_argument('--output-dir', type=str,
                         help='Directory to save output files')
     

@@ -41,7 +41,7 @@ VISUALIZATION_CONFIG = {
 # Analysis settings
 ANALYSIS_CONFIG = {
     'min_year': 2010,
-    'max_year': 2023,
+    'max_year': 2025,
     'market_share_threshold': 0.01,  # 1% minimum for market share
     'growth_threshold': 0.05,        # 5% minimum for significant growth
     'provider_threshold': 3          # Minimum number of providers for analysis

@@ -7,6 +7,19 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional, Union, Dict, Any
+from enum import Enum
+
+from src.vipunen.utils.file_handler import VipunenFileHandler
+from FileUtils import OutputFileType
+
+# Define InputFileType enum (not available in FileUtils)
+class InputFileType(Enum):
+    """Supported input file types."""
+    CSV = "csv"
+    EXCEL = "excel"
+    JSON = "json"
+    PARQUET = "parquet"
+    YAML = "yaml"
 
 # Configure logging
 logging.basicConfig(
@@ -15,10 +28,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Initialize the file handler
+file_handler = VipunenFileHandler()
+
 def ensure_data_directory(file_path: Union[str, Path]) -> str:
     """
     Ensure the file path includes the data directory.
-    If the path starts with 'raw/', prepend 'data/' to it.
+    If the path starts with 'raw/' and doesn't already have 'data/' prefix, prepend 'data/' to it.
     
     Args:
         file_path: Original file path
@@ -26,7 +42,7 @@ def ensure_data_directory(file_path: Union[str, Path]) -> str:
     Returns:
         str: Updated file path
     """
-    if isinstance(file_path, str) and file_path.startswith("raw/"):
+    if isinstance(file_path, str) and file_path.startswith("raw/") and not file_path.startswith("data/"):
         return f"data/{file_path}"
     return str(file_path)
 
@@ -47,29 +63,42 @@ def load_data(file_path: Union[str, Path], shorten_names: bool = False) -> pd.Da
         pd.errors.ParserError: If the file cannot be parsed
     """
     try:
-        # Ensure the file path includes the data directory if needed
-        file_path = ensure_data_directory(file_path)
-        
         logger.info(f"Loading data from {file_path}")
         
-        # Handle relative paths
-        if not os.path.isabs(file_path):
-            file_path = os.path.join(os.getcwd(), file_path)
+        # Get just the filename without directory structure
+        path_obj = Path(file_path)
+        file_name = path_obj.name
         
-        # Load the data
-        if file_path.endswith(".csv"):
+        # Determine file type based on extension
+        file_suffix = path_obj.suffix.lower()
+        
+        # Use the file handler to load the data
+        # For CSV files, try both separators
+        if file_suffix == ".csv":
             try:
-                df = pd.read_csv(file_path, sep=';')
-            except Exception as e:
+                return file_handler.load_data(
+                    file_name, 
+                    input_type="raw",
+                    file_type=InputFileType.CSV,
+                    sep=';'
+                )
+            except Exception:
                 # Try with comma separator if semicolon fails
-                df = pd.read_csv(file_path, sep=',')
-        elif file_path.endswith((".xlsx", ".xls")):
-            df = pd.read_excel(file_path)
+                return file_handler.load_data(
+                    file_name, 
+                    input_type="raw",
+                    file_type=InputFileType.CSV,
+                    sep=','
+                )
+        elif file_suffix in [".xlsx", ".xls"]:
+            return file_handler.load_data(
+                file_name, 
+                input_type="raw",
+                file_type=InputFileType.EXCEL
+            )
         else:
             raise ValueError(f"Unsupported file format: {file_path}")
-        
-        logger.info(f"Loaded {len(df)} rows from {file_path}")
-        return df
+            
     except FileNotFoundError:
         logger.error(f"File not found: {file_path}")
         raise FileNotFoundError(f"Error loading data file: File not found: {file_path}")
@@ -93,15 +122,5 @@ def create_output_directory(institution_name: str) -> Path:
     Returns:
         Path: Path to the created directory
     """
-    # Create a directory name based on the institution name
-    dir_name = f"education_market_{institution_name.lower()}"
-    
-    # Set up the path
-    base_dir = Path("data/reports")
-    output_dir = base_dir / dir_name
-    
-    # Create the directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-    logger.info(f"Created output directory at {output_dir}")
-    
-    return output_dir 
+    # Use the file handler to create the directory
+    return file_handler.create_output_directory(institution_name, base_dir="reports") 

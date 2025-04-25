@@ -5,12 +5,14 @@ import pandas as pd
 from vipunen.api.client import VipunenAPIClient, APIConfig
 from vipunen.analysis.market import analyze_market
 from vipunen.utils.data_utils import clean_column_names, convert_to_numeric, handle_missing_values
+from vipunen.utils.file_handler import VipunenFileHandler
 from vipunen.config import (
     RAW_DATA_DIR,
     PROCESSED_DATA_DIR,
     API_CONFIG,
     ANALYSIS_CONFIG
 )
+from FileUtils import OutputFileType
 
 # Configure logging
 logging.basicConfig(
@@ -18,6 +20,9 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize file handler
+file_handler = VipunenFileHandler()
 
 def main():
     """Main function to fetch and analyze Vipunen data."""
@@ -35,9 +40,13 @@ def main():
         client.fetch_and_save_data(RAW_DATA_DIR)
         raw_data_path = RAW_DATA_DIR / f"{api_config.dataset}.csv"
         
-        # Load and preprocess data
+        # Load and preprocess data using FileUtils
         logger.info("Loading and preprocessing data...")
-        df = pd.read_csv(raw_data_path, sep=';')
+        df = file_handler.load_data(
+            raw_data_path, 
+            input_type="raw",
+            sep=';'  # Try with semicolon separator first
+        )
         
         # Print column names for debugging
         logger.info("\nAvailable columns:")
@@ -72,10 +81,30 @@ def main():
             min_years=2
         )
         
-        # Save processed data
-        processed_data_path = PROCESSED_DATA_DIR / 'processed_market_data.csv'
-        market_analysis['market_shares'].to_csv(processed_data_path, sep=';', index=False)
-        logger.info(f"Processed data saved to {processed_data_path}")
+        # Save processed data using FileUtils
+        logger.info("Saving processed data...")
+        file_path = file_handler.save_data(
+            market_analysis['market_shares'],
+            file_name='processed_market_data',
+            output_type='processed',
+            output_filetype=OutputFileType.CSV,
+            sep=';'
+        )
+        logger.info(f"Processed data saved to {file_path}")
+        
+        # Export detailed analysis to Excel
+        excel_data = {
+            'Market Shares': market_analysis['market_shares'],
+            'Market Growth': market_analysis.get('market_growth', pd.DataFrame()),
+            'Provider Ranking': market_analysis.get('provider_ranking', pd.DataFrame())
+        }
+        
+        excel_path = file_handler.export_to_excel(
+            excel_data,
+            file_name='market_analysis_report',
+            output_type='reports'
+        )
+        logger.info(f"Excel report saved to {excel_path}")
         
         # Print summary of results
         logger.info("\nMarket Analysis Summary:")

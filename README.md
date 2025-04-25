@@ -18,9 +18,22 @@ src/vipunen/
 │   ├── volume_plots.py  # Plots for volume metrics
 │   ├── market_plots.py  # Plots for market share metrics
 │   └── growth_plots.py  # Plots for growth metrics
-└── export/             # Data export functionalityº
+├── utils/             # Utility functions and helpers
+│   └── file_handler.py  # FileUtils integration
+└── export/             # Data export functionality
     └── excel_exporter.py  # Excel export utilities
 ```
+
+## FileUtils Integration
+
+This project uses the [FileUtils](https://github.com/topi-python/FileUtils) package for standardized file operations. The integration provides:
+
+- Consistent data loading and saving across the application
+- Standardized directory structure management
+- Automatic timestamp-based file naming
+- Metadata tracking for data lineage
+
+For details on how FileUtils is integrated, see [FileUtils Integration Guide](docs/FILEUTILS_INTEGRATION.md).
 
 ## Usage
 
@@ -80,7 +93,7 @@ The analysis produces:
 
 ```python
 # Load and prepare data
-raw_data = load_data("data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
+raw_data = load_data("amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
 df_clean = clean_and_prepare_data(raw_data, institution_names=institution_variants)
 
 # Apply optional filters
@@ -100,6 +113,7 @@ plot_total_volumes(total_volumes, institution_short_name="Rastor")
 exporter = ExcelExporter(output_dir, prefix="rastor")
 excel_path = exporter.export_to_excel(excel_data)
 ```
+See more in [WORKFLOW.md](docs/WORKFLOW.md)
 
 ## Key Metrics
 
@@ -119,10 +133,21 @@ The analysis calculates various metrics for vocational education providers:
 - seaborn
 - pathlib
 - logging
+- FileUtils (v0.6.1+)
 
 You can set up the environment using conda:
 
 ```bash
 conda env create -f environment.yaml
 conda activate vipunen-analytics
-``` 
+```
+
+## Troubleshooting
+
+If you encounter issues with FileUtils integration, check:
+
+1. **Path Resolution Issues**: Ensure paths don't have duplicated directory prefixes (e.g., `data/raw/data/raw/`)
+2. **Excel Export Errors**: If you see `'str' object has no attribute 'value'` errors, the issue might be with how FileUtils handles enums in your version
+3. **Missing Data Files**: Verify the expected data file exists at the specified location
+
+For more troubleshooting tips, refer to the [FileUtils Integration Guide](docs/FILEUTILS_INTEGRATION.md). 

@@ -24,7 +24,7 @@ def parse_arguments():
         "--data-file", "-d",
         dest="data_file",
         help="Path to the data file (CSV)",
-        default="data/raw/ammatillinen_koulutus_2018_2022.csv"
+        default="data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
     )
     
     parser.add_argument(
@@ -42,11 +42,11 @@ def parse_arguments():
     )
     
     parser.add_argument(
-        "--variants", "-v",
+        "--variant", "-v",
         dest="variants",
-        nargs="+",
-        help="Additional name variants for the institution",
-        default=["Rastor-instituutti ry", "RASTOR OY", "Rastor Oy"]
+        action="append",
+        help="Name variant for the institution (can be specified multiple times)",
+        default=[]
     )
     
     parser.add_argument(
@@ -91,8 +91,24 @@ def ensure_data_directory(file_path):
         return f"data/{file_path}"
     return file_path
 
+def check_dependencies():
+    """Check if required dependencies are installed."""
+    try:
+        import FileUtils
+        logger.info("FileUtils package is available.")
+        return True
+    except ImportError:
+        logger.error("FileUtils package is not installed.")
+        logger.error("Please install it with: pip install FileUtils")
+        return False
+
 def main():
     """Main function to run the analysis."""
+    # Check if FileUtils is available
+    if not check_dependencies():
+        logger.error("Analysis cannot continue without FileUtils package.")
+        return 1
+    
     # Parse command-line arguments
     args = parse_arguments()
     

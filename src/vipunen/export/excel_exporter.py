@@ -10,12 +10,18 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Union
 from datetime import datetime
 
+from src.vipunen.utils.file_handler import VipunenFileHandler
+from FileUtils.core.file_utils import OutputFileType
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Initialize the file handler
+file_handler = VipunenFileHandler()
 
 class ExcelExporter:
     """
@@ -169,41 +175,45 @@ class ExcelExporter:
         Returns:
             Path: Path to the saved Excel file
         """
-        # Generate a timestamp for the file name
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        excel_path = self.output_dir / f"{self.prefix}_market_analysis_{timestamp}.xlsx"
+        # Filter out empty DataFrames
+        filtered_data = {
+            sheet_name: df for sheet_name, df in data_dict.items() 
+            if isinstance(df, pd.DataFrame) and not df.empty
+        }
+        
+        if not filtered_data:
+            logger.warning("No data to export to Excel")
+            return self.output_dir / f"{self.prefix}_empty.xlsx"
         
         try:
-            # Create Excel writer
-            with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                for sheet_name, sheet_data in data_dict.items():
-                    if not isinstance(sheet_data, pd.DataFrame) or sheet_data.empty:
-                        logger.warning(f"Skipping empty sheet: {sheet_name}")
-                        continue
-                    
-                    # Make sure we're dealing with a DataFrame with a standard index
-                    try:
-                        # Reset index if it's not a default RangeIndex
-                        if not isinstance(sheet_data.index, pd.RangeIndex):
-                            sheet_data = sheet_data.reset_index()
-                        
-                        # Export to Excel
-                        sheet_data.to_excel(writer, sheet_name=sheet_name, index=False)
-                        logger.info(f"Added sheet '{sheet_name}' with {len(sheet_data)} rows")
-                    except Exception as e:
-                        logger.error(f"Error exporting sheet '{sheet_name}': {e}")
-                        try:
-                            # Fallback: Create a simpler DataFrame
-                            safe_df = pd.DataFrame(sheet_data.values)
-                            if hasattr(sheet_data, 'columns'):
-                                safe_df.columns = sheet_data.columns
-                            safe_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                            logger.info(f"Added sheet '{sheet_name}' using fallback method")
-                        except Exception as e2:
-                            logger.error(f"Failed to export sheet '{sheet_name}' with fallback: {e2}")
+            # Get relative path for output_dir
+            file_name = f"{self.prefix}_market_analysis"
             
-            logger.info(f"Exported data to {excel_path}")
-            return excel_path
+            for sheet_name, df in filtered_data.items():
+                logger.info(f"Preparing sheet '{sheet_name}' with {len(df)} rows")
+                
+                # Reset index if it's not a default RangeIndex
+                if not isinstance(df.index, pd.RangeIndex):
+                    filtered_data[sheet_name] = df.reset_index(drop=True)
+            
+            # Determine output type based on output_dir
+            output_dir_str = str(self.output_dir)
+            if "reports" in output_dir_str:
+                output_type = "reports"
+            elif "processed" in output_dir_str:
+                output_type = "processed"
+            else:
+                # Default to reports
+                output_type = "reports"
+            
+            # Use the file_handler's export_to_excel method
+            return file_handler.export_to_excel(
+                data_dict=filtered_data,
+                file_name=file_name,
+                output_type=output_type,
+                include_timestamp=True
+            )
+            
         except Exception as e:
-            logger.error(f"Error exporting to Excel: {e}")
+            logger.error(f"Error exporting Excel file: {e}")
             raise 

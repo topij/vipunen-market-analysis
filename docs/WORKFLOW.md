@@ -76,7 +76,10 @@ python run_analysis.py \
 
 The analysis follows these steps:
 
-1. **Data Loading**: Load data from CSV file
+1. **Data Loading**: Load data from CSV file using FileUtils
+   - The `load_data` function in `src/vipunen/data/data_loader.py` uses the `VipunenFileHandler` to load the data
+   - Only the filename is needed; the path structure is managed by FileUtils
+
 2. **Data Cleaning**: Clean and prepare the data
    - Replace missing values
    - Standardize qualification names
@@ -106,7 +109,8 @@ The analysis follows these steps:
    - Generate growth trend plots
 
 8. **Export Results**:
-   - Export analysis results to Excel with focused worksheets
+   - Export analysis results to Excel with focused worksheets using `ExcelExporter`
+   - Files are saved with timestamps for versioning
 
 ### 5. Output Files
 
@@ -126,7 +130,61 @@ The analysis generates output in `data/reports/education_market_[institution_nam
   - `[institution]_qualification_market_shares.png`: Market shares in top qualifications
   - `[institution]_qualification_time_series.png`: Volume trends over time
 
-### 6. Troubleshooting
+### 6. Troubleshooting FileUtils Integration
+
+The project uses FileUtils v0.6.1 for standardized file operations. Here are solutions to common issues:
+
+#### Path Resolution Issues
+
+If you encounter errors like:
+```
+/path/to/data/raw/data/raw/filename.csv: No such file or directory
+```
+
+This indicates a path resolution issue where directory prefixes are being duplicated. The solution:
+
+1. Make sure to pass only the filename to `load_data`, not the full path:
+   ```python
+   # Correct
+   df = load_data("amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
+   
+   # Incorrect - might cause path duplication
+   df = load_data("data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
+   ```
+
+2. If you need to use the full path, ensure the `ensure_data_directory` function correctly handles paths with existing "data/" prefix.
+
+#### Excel Export Errors
+
+If you see errors like:
+```
+'str' object has no attribute 'value'
+```
+
+This is typically caused by incompatibilities with how FileUtils handles enums. The solution implemented in this project:
+
+1. We've customized the `export_to_excel` method in `VipunenFileHandler` to use pandas directly, bypassing some of the FileUtils functionality that causes issues.
+
+2. For your own custom exports, use this pattern:
+   ```python
+   file_handler = VipunenFileHandler()
+   excel_path = file_handler.export_to_excel(
+       data_dict=your_data_dict,
+       file_name="your_file_name",
+       output_type="reports",
+       include_timestamp=True
+   )
+   ```
+
+#### File Not Found Issues
+
+If the expected data file isn't found:
+
+1. Check that the file exists in the correct location (FileUtils looks in the `/data/raw/` directory by default)
+2. Verify the filename matches exactly what's expected (case-sensitive)
+3. If using the CLI, double-check your `--data-file` parameter value
+
+### 7. General Troubleshooting
 
 - **Missing Data**: If your data file is missing, the script will generate dummy data for demonstration
 - **Column Names**: Ensure your data has the required column names (see above)
@@ -146,7 +204,7 @@ from src.vipunen.analysis.market_share_analyzer import calculate_market_shares, 
 from src.vipunen.visualization.volume_plots import plot_total_volumes
 
 # Load and prepare data
-raw_data = load_data("data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
+raw_data = load_data("amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
 df_clean = clean_and_prepare_data(raw_data, institution_names=["Provider Name"])
 
 # Optional filtering
@@ -173,6 +231,31 @@ market_share_changes = pd.concat(market_share_changes_all, ignore_index=True)
 
 # Create visualizations
 plot_total_volumes(volumes_df, institution_short_name="Provider")
+```
+
+### Using the FileUtils Integration Directly
+
+For direct access to file operations:
+
+```python
+from src.vipunen.utils.file_handler import VipunenFileHandler
+
+# Get the singleton instance
+file_handler = VipunenFileHandler()
+
+# Load data
+df = file_handler.load_data(
+    "your_data_file.csv", 
+    input_type="raw",
+    file_type=InputFileType.CSV
+)
+
+# Export processed data
+output_path = file_handler.save_data(
+    data=processed_df,
+    file_name="processed_data", 
+    output_type="processed"
+)
 ```
 
 ### Extending the Analysis

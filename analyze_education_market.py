@@ -14,6 +14,9 @@ import argparse
 from pathlib import Path
 import logging
 
+# Import FileUtils
+from FileUtils import OutputFileType
+
 # Import modules from the vipunen package
 from src.vipunen.data.data_loader import load_data, create_output_directory
 from src.vipunen.data.data_processor import clean_and_prepare_data, shorten_qualification_names
@@ -39,7 +42,7 @@ def parse_arguments():
         "--data-file", "-d",
         dest="data_file",
         help="Path to the data file (CSV)",
-        default="data/raw/ammatillinen_koulutus_2018_2022.csv"
+        default="data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
     )
     
     parser.add_argument(

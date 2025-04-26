@@ -53,14 +53,14 @@ def parse_arguments():
         "--institution", "-i",
         dest="institution",
         help="Main name of the institution to analyze",
-        default="Rastor-instituutti"
+        default="Rastor-instituutti ry"
     )
     
     parser.add_argument(
         "--short-name", "-s",
         dest="short_name",
         help="Short name for the institution (used in titles and file names)",
-        default="Rastor"
+        default="RI"
     )
     
     parser.add_argument(
@@ -240,11 +240,11 @@ def main():
     
     # Create the output directory under reports using standard Path methods
     output_dir = reports_dir / dir_name
-    output_dir.mkdir(exist_ok=True)
+    output_dir.mkdir(exist_ok=True, parents=True)
     
     # Create plots directory under the output directory
     plots_dir = output_dir / "plots"
-    plots_dir.mkdir(exist_ok=True)
+    plots_dir.mkdir(exist_ok=True, parents=True)
     
     # Override output directory if specified in args
     if args.output_dir:
@@ -461,66 +461,21 @@ def main():
     years = sorted(df_filtered["tilastovuosi"].unique())
     latest_year = years[-1] if years else None
     
-    qualification_cagr = calculate_cagr_for_groups(
-        volumes_by_qual_df,
-        ["tutkinto"],
-        f"{latest_year}_yhteensä"
+    # Use volumes_long_df which has the correct structure for CAGR calculation
+    # It has columns: Year, Qualification, Total Amount, etc.
+    cagr_analysis = calculate_cagr_for_groups(
+        df=volumes_long_df,
+        groupby_columns=["Qualification"],
+        value_column="Total Amount",
+        qual_type_column="tutkintotyyppi" if "tutkintotyyppi" in volumes_long_df.columns else None
     )
     
-    # Step 14: Enhance CAGR Analysis with additional information
-    logger.info("Enhancing CAGR Analysis with additional information")
-    # Add First Year and Last Year columns
-    cagr_enhanced = []
-    
-    # Use volumes_by_qual_df as the more reliable source for CAGR data
-    for qual, group in volumes_by_qual_df.groupby("tutkinto"):
-        years_present = sorted(group["tilastovuosi"].unique())
-        
-        if years_present and len(years_present) > 1:
-            first_year = min(years_present)
-            last_year = max(years_present)
-            
-            # Get volumes for first and last year
-            first_year_total_col = f"{first_year}_yhteensä"
-            last_year_total_col = f"{last_year}_yhteensä"
-            
-            first_year_data = group[group["tilastovuosi"] == first_year]
-            last_year_data = group[group["tilastovuosi"] == last_year]
-            
-            first_year_vol = first_year_data[first_year_total_col].iloc[0] if not first_year_data.empty else 0
-            last_year_vol = last_year_data[last_year_total_col].iloc[0] if not last_year_data.empty else 0
-            
-            # Calculate CAGR directly
-            years_diff = last_year - first_year
-            if years_diff > 0 and first_year_vol > 0:
-                cagr_value = ((last_year_vol / first_year_vol) ** (1 / years_diff) - 1) * 100
-            else:
-                cagr_value = np.nan
-                
-            # Get qualification type
-            qual_type = group["tutkintotyyppi"].iloc[0].split()[-1] if "tutkintotyyppi" in group.columns and not group.empty else qual.split()[-1]
-            
-            # Create enhanced row
-            cagr_enhanced.append({
-                "tutkinto": qual,
-                "CAGR": cagr_value,
-                "First Year": first_year,
-                "Last Year": last_year,
-                "First Year Volume": first_year_vol,
-                "Last Year Volume": last_year_vol,
-                "Years Present": len(years_present),
-                "Qualification Type": qual_type
-            })
-    
-    # Convert to DataFrame
-    cagr_analysis = pd.DataFrame(cagr_enhanced)
-    
-    # Ensure CAGR Analysis has at least one row
+    # Step 14: Ensure CAGR Analysis has at least one row
     if cagr_analysis.empty:
         logger.warning("CAGR Analysis is empty. Adding a placeholder row.")
         cagr_analysis = pd.DataFrame([{
             "tutkinto": "No qualification data available",
-            "CAGR": 0.0,
+            "CAGR": "",
             "First Year": years[0] if years else None,
             "Last Year": years[-1] if years else None,
             "First Year Volume": 0,

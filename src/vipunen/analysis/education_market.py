@@ -7,6 +7,7 @@ import pandas as pd
 import numpy as np
 import logging
 from typing import List, Dict, Any, Optional, Union, Tuple
+from .qualification_analyzer import calculate_cagr_for_groups
 
 # Configure logging
 logging.basicConfig(
@@ -36,91 +37,6 @@ def sum_new_columns(df: pd.DataFrame, suffixes: List[str] = ['_as_jarjestaja', '
                 col2 = original_col + suffixes[1]
                 
     return (df[col1] + df[col2])
-
-def calculate_cagr_for_groups(
-    df: pd.DataFrame, 
-    groupby_columns: List[str], 
-    value_column: str, 
-    last_year: Optional[int] = None
-) -> pd.DataFrame:
-    """
-    Calculate the Compound Annual Growth Rate (CAGR) for each group in a DataFrame.
-    
-    Args:
-        df: DataFrame containing the data with a 'tilastovuosi' column for years
-        groupby_columns: List of column names to group the DataFrame by
-        value_column: Name of column containing values for CAGR calculation
-        last_year: Optional last year to include in the CAGR calculation
-    
-    Returns:
-        DataFrame containing calculated CAGR for each group, with CAGR in percentage format
-    
-    Notes:
-        - Handles cases where start or end value is zero
-        - Infinite growth represented by np.inf
-        - Decline to zero represented by -np.inf
-    """
-    # Initialize an empty list for CAGR DataFrames
-    cagr_list = []
-    
-    # Filter the DataFrame if a last_year parameter is provided
-    if last_year is not None:
-        df = df[df['tilastovuosi'] <= last_year]
-    
-    # Group the DataFrame by the columns specified in groupby_columns
-    grouped = df.groupby(groupby_columns)
-    
-    # Iterate over each group to calculate CAGR
-    for name, group in grouped:
-        # Ensure there is more than one year of data for the group
-        if len(group) > 1:
-            # Sort the group by year to ensure start and end values are correct
-            group = group.sort_values('tilastovuosi')
-            
-            # Get the first and last value and the number of periods (years)
-            end_value = group[value_column].iloc[-1]
-            start_value = group[value_column].iloc[0]
-            
-            # Track the actual first and last year offered
-            first_year_offered = group['tilastovuosi'].iloc[0]
-            last_year_offered = group['tilastovuosi'].iloc[-1]
-            periods = last_year_offered - first_year_offered
-            
-            # Handle special or extreme cases for CAGR calculation
-            if start_value == 0 and end_value == 0:
-                cagr = 0  # No growth, value remains zero
-            elif start_value == 0:
-                cagr = np.inf  # Infinite growth from zero
-            elif end_value == 0:
-                cagr = -np.inf  # Decline to zero
-            elif end_value / start_value > 1e5:  # Arbitrarily chosen threshold for extreme growth
-                cagr = np.inf  # Represent extreme growth as infinite
-            else:
-                try:
-                    cagr = ((end_value / start_value) ** (1 / periods) - 1) * 100  # CAGR formula
-                except ZeroDivisionError:
-                    cagr = np.nan  # Undefined, occurs if start and end years are the same
-            
-            # Create a DataFrame for this group's CAGR
-            if isinstance(name, tuple):
-                # For multiple groupby columns, create a dict with column names as keys
-                cagr_dict = {groupby_columns[i]: name[i] for i in range(len(groupby_columns))}
-            else:
-                # For a single groupby column
-                cagr_dict = {groupby_columns[0]: name}
-            
-            cagr_dict['CAGR'] = cagr
-            cagr_dict['First Year Offered'] = first_year_offered
-            cagr_dict['Last Year Offered'] = last_year_offered
-            cagr_list.append(pd.DataFrame([cagr_dict]))
-    
-    # Combine all individual CAGR DataFrames
-    if cagr_list:
-        return pd.concat(cagr_list, ignore_index=True)
-    else:
-        # Return an empty DataFrame with appropriate columns if no CAGR could be calculated
-        columns = groupby_columns + ['CAGR', 'First Year Offered', 'Last Year Offered']
-        return pd.DataFrame(columns=columns)
 
 def calculate_yoy_growth(
     df: pd.DataFrame, 

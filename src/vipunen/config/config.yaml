@@ -1,0 +1,57 @@
+# Vipunen Project Configuration
+
+# Column mappings for input and output
+columns:
+  input:
+    year: 'tilastovuosi'
+    degree_type: 'tutkintotyyppi'
+    qualification: 'tutkinto' 
+    provider: 'koulutuksenJarjestaja'
+    subcontractor: 'hankintakoulutuksenJarjestaja'
+    volume: 'nettoopiskelijamaaraLkm'
+  
+  output:
+    year: 'Year'
+    qualification: 'Qualification'
+    provider: 'Provider'
+    provider_amount: 'Provider Amount'
+    subcontractor_amount: 'Subcontractor Amount'
+    total_volume: 'Total Volume'
+    market_total: 'Market Total'
+    market_share: 'Market Share (%)'
+    market_rank: 'Market Rank'
+    market_share_growth: 'Market Share Growth (%)'
+    market_gainer: 'market gainer'
+
+# Institution information
+institutions:
+  default:
+    name: "Rastor-instituutti"
+    short_name: "RI"
+    variants:
+      - "Rastor-instituutti ry"
+      - "Rastor-instituutti"
+      - "RASTOR OY"
+      - "Rastor Oy"
+
+# Qualification types to filter
+qualification_types:
+  - "Ammattitutkinnot"
+  - "Erikoisammattitutkinnot"
+
+# File paths
+paths:
+  data: "data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
+  output: "data/reports"
+
+# Excel export settings
+excel:
+  sheets:
+    - name: "Total Volumes"
+      description: "Total student volumes by year"
+    - name: "Volumes by Qualification"
+      description: "Student volumes broken down by qualification"
+    - name: "Provider's Market"
+      description: "Market analysis including all providers"
+    - name: "CAGR Analysis"
+      description: "Compound Annual Growth Rate analysis" 

@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, Union
 from datetime import datetime
 
 from src.vipunen.utils.file_handler import VipunenFileHandler
-from FileUtils.core.file_utils import OutputFileType
+from FileUtils import OutputFileType
 
 # Configure logging
 logging.basicConfig(
@@ -186,7 +186,7 @@ class ExcelExporter:
             return self.output_dir / f"{self.prefix}_empty.xlsx"
         
         try:
-            # Get relative path for output_dir
+            # Prepare file name
             file_name = f"{self.prefix}_market_analysis"
             
             for sheet_name, df in filtered_data.items():
@@ -206,12 +206,13 @@ class ExcelExporter:
                 # Default to reports
                 output_type = "reports"
             
-            # Use the file_handler's export_to_excel method
+            # Use the file_handler's export_to_excel method which now uses the proper FileUtils method
             return file_handler.export_to_excel(
                 data_dict=filtered_data,
                 file_name=file_name,
                 output_type=output_type,
-                include_timestamp=True
+                include_timestamp=True,
+                index=False  # Don't include index in Excel export
             )
             
         except Exception as e:

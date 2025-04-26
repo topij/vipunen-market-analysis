@@ -42,7 +42,7 @@ For details on how FileUtils is integrated, see [FileUtils Integration Guide](do
 The easiest way to run the analysis is using the command-line interface provided by `run_analysis.py`:
 
 ```bash
-python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti" --short-name "Rastor"
+python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti" --short-name "RI"
 ```
 
 Optional arguments:

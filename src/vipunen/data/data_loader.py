@@ -48,7 +48,7 @@ def ensure_data_directory(file_path: Union[str, Path]) -> str:
 
 def load_data(file_path: Union[str, Path], shorten_names: bool = False) -> pd.DataFrame:
     """
-    Load data from a CSV file with appropriate error handling.
+    Load data from a file with appropriate error handling.
     
     Args:
         file_path: Path to the data file
@@ -79,7 +79,6 @@ def load_data(file_path: Union[str, Path], shorten_names: bool = False) -> pd.Da
                 return file_handler.load_data(
                     file_name, 
                     input_type="raw",
-                    file_type=InputFileType.CSV,
                     sep=';'
                 )
             except Exception:
@@ -87,14 +86,12 @@ def load_data(file_path: Union[str, Path], shorten_names: bool = False) -> pd.Da
                 return file_handler.load_data(
                     file_name, 
                     input_type="raw",
-                    file_type=InputFileType.CSV,
                     sep=','
                 )
         elif file_suffix in [".xlsx", ".xls"]:
             return file_handler.load_data(
                 file_name, 
-                input_type="raw",
-                file_type=InputFileType.EXCEL
+                input_type="raw"
             )
         else:
             raise ValueError(f"Unsupported file format: {file_path}")

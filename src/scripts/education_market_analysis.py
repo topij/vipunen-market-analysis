@@ -58,6 +58,8 @@ import numpy as np
 import io
 import os
 import shutil
+import logging
+import datetime
 
 # Add the parent directory to the path to import from the vipunen package
 sys.path.append(str(Path(__file__).resolve().parents[2]))
@@ -65,90 +67,19 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 from vipunen.analysis.education_market import EducationMarketAnalyzer
 from vipunen.visualization.education_visualizer import EducationVisualizer, COLOR_PALETTES, TEXT_CONSTANTS
 
-# Try to import FileUtils, but use a fallback if not available
-try:
-    from FileUtils import FileUtils, OutputFileType
-    file_utils = FileUtils()
-    # Get ROOT_DIR for absolute paths when needed
-    ROOT_DIR = Path(file_utils.project_root)
-    print("Successfully imported FileUtils")
-except ImportError:
-    print("FileUtils package not found. Using built-in file handling.")
-    # Define a simple replacement for FileUtils
-    class SimpleFileUtils:
-        def __init__(self):
-            self.project_root = os.getcwd()
-            
-        def load_single_file(self, file_path, input_type=None):
-            """Simple file loader that detects file type from extension"""
-            file_path = Path(file_path)
-            if file_path.suffix.lower() == '.csv':
-                return pd.read_csv(file_path, sep=';')
-            elif file_path.suffix.lower() in ['.xlsx', '.xls']:
-                return pd.read_excel(file_path)
-            else:
-                raise ValueError(f"Unsupported file type: {file_path.suffix}")
-                
-        def create_directory(self, dir_name, parent_dir=None):
-            """Create directory and return path"""
-            if parent_dir == "data":
-                # Default to data directory in project root
-                output_dir = Path(self.project_root) / "data" / dir_name
-            else:
-                output_dir = Path(dir_name)
-                
-            os.makedirs(output_dir, exist_ok=True)
-            return str(output_dir)
-            
-        def save_data_to_storage(self, data, file_name, output_type=None, output_filetype=None, output_directory=None):
-            """Simple implementation of save_data_to_storage"""
-            # Handle output directory
-            if output_directory:
-                output_dir = Path(output_directory)
-            else:
-                output_dir = Path(self.project_root) / "data" / "excel"
-                
-            # Create directory if it doesn't exist
-            os.makedirs(output_dir, exist_ok=True)
-            
-            # Generate timestamp for filename
-            timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-            file_extension = ".xlsx" if output_filetype == OutputFileType.XLSX else ".csv"
-            full_file_name = f"{file_name}_{timestamp}{file_extension}"
-            file_path = output_dir / full_file_name
-            
-            # Save file based on data type and output type
-            if isinstance(data, dict):
-                # Dictionary of DataFrames - save as Excel with multiple sheets
-                if output_filetype == OutputFileType.XLSX:
-                    with pd.ExcelWriter(file_path) as writer:
-                        for sheet_name, df in data.items():
-                            df.to_excel(writer, sheet_name=sheet_name)
-                else:
-                    # If not Excel, save each DataFrame as separate CSV file
-                    result = {}
-                    for sheet_name, df in data.items():
-                        sheet_path = output_dir / f"{file_name}_{sheet_name}_{timestamp}.csv"
-                        df.to_csv(sheet_path, sep=';', index=True)
-                        result[sheet_name] = str(sheet_path)
-                    return result
-            else:
-                # Single DataFrame
-                if output_filetype == OutputFileType.XLSX:
-                    data.to_excel(file_path)
-                else:
-                    data.to_csv(file_path, sep=';', index=True)
-                    
-            # Return dictionary mapping sheet name to file path for compatibility
-            return {'Sheet1': str(file_path)}
-    
-    # Create enum-like class for compatibility
-    class OutputFileType:
-        CSV = "csv"
-        XLSX = "xlsx"
-    
-    file_utils = SimpleFileUtils()
-    ROOT_DIR = Path(file_utils.project_root)
+# Import FileUtils and configuration
+from FileUtils import FileUtils, OutputFileType
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Initialize FileUtils
+file_utils = FileUtils()
+ROOT_DIR = Path(file_utils.project_root)
 
 # Default institution for backward compatibility
 DEFAULT_INSTITUTION_NAMES = ["Rastor-instituutti ry", "Rastor Oy"]
@@ -405,8 +336,8 @@ def save_plot(fig, file_path=None, plot_name=None, output_dir=None):
             raise ValueError("Either file_path or plot_name must be specified")
         
         if output_dir is None:
-            # Create figures directory under data (fallback)
-            figures_dir = file_utils.create_directory("figures", parent_dir="data")
+            # Create figures directory under reports
+            figures_dir = file_utils.create_directory("figures", parent_dir="reports")
             file_path = Path(figures_dir) / f"{plot_name}.png"
         else:
             # Save directly to the institution-specific output directory
@@ -437,12 +368,10 @@ def create_output_directory(institution_name):
     dir_name = f"education_market_{institution_name.lower()}"
     
     # Create the reports directory if it doesn't exist
-    reports_dir = Path(ROOT_DIR) / "data" / "reports"
-    if not reports_dir.exists():
-        os.makedirs(reports_dir, exist_ok=True)
+    reports_dir = file_utils.create_directory("reports", parent_dir="data")
     
     # Create the institution-specific directory under reports
-    output_dir = reports_dir / dir_name
+    output_dir = Path(reports_dir) / dir_name
     if not output_dir.exists():
         os.makedirs(output_dir, exist_ok=True)
     
@@ -1024,6 +953,83 @@ def calculate_total_volumes(df, provider_names, year_col='tilastovuosi',
     
     return result_df
 
+def export_to_excel(data_dict, file_name, output_dir=None, **kwargs):
+    """
+    Export multiple DataFrames to Excel using pandas ExcelWriter directly to ensure it goes to the specified directory.
+    
+    Args:
+        data_dict: Dictionary mapping sheet names to DataFrames
+        file_name: Base name for the output file
+        output_dir: Path to the output directory (required)
+        **kwargs: Additional arguments for Excel export
+        
+    Returns:
+        Path: Path to the saved Excel file
+    """
+    # Filter out empty DataFrames
+    filtered_data = {
+        sheet_name: df for sheet_name, df in data_dict.items() 
+        if isinstance(df, pd.DataFrame) and not df.empty
+    }
+    
+    if not filtered_data:
+        logger.warning("No data to export to Excel")
+        return None
+    
+    try:
+        # Log what we're exporting
+        for sheet_name, df in filtered_data.items():
+            logger.info(f"Preparing sheet '{sheet_name}' with {len(df)} rows")
+            
+            # Reset index if it's not a default RangeIndex
+            if not isinstance(df.index, pd.RangeIndex):
+                filtered_data[sheet_name] = df.reset_index(drop=True)
+            
+            # Check for problematic data that might cause Excel export issues
+            if df.isnull().values.any():
+                logger.warning(f"Sheet '{sheet_name}' contains NULL values which might cause export issues")
+            
+            # Check for infinite values
+            if np.isinf(df.select_dtypes(include=[np.number]).values).any():
+                logger.warning(f"Sheet '{sheet_name}' contains infinite values which might cause export issues")
+                # Replace infinite values with a large number or NaN
+                for col in df.select_dtypes(include=[np.number]).columns:
+                    filtered_data[sheet_name][col] = filtered_data[sheet_name][col].replace([np.inf, -np.inf], np.nan)
+        
+        # Make sure we have an output directory
+        if output_dir is None:
+            # Default to a reports subdirectory if none specified
+            reports_dir = file_utils.create_directory("reports", parent_dir="data")
+            output_dir = Path(reports_dir)
+            logger.warning(f"No output_dir specified, defaulting to {output_dir}")
+            
+        # Make sure output_dir exists
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate timestamp if requested
+        timestamp = ""
+        if kwargs.get('include_timestamp', True):
+            from datetime import datetime
+            timestamp = f"_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            
+        # Create full file path
+        file_path = Path(output_dir) / f"{file_name}{timestamp}.xlsx"
+        
+        # Save using pandas ExcelWriter directly to ensure it goes to the right location
+        with pd.ExcelWriter(file_path, engine='openpyxl') as writer:
+            for sheet_name, df in filtered_data.items():
+                df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        excel_path = str(file_path)
+        logger.info(f"Exported Excel file to {excel_path}")
+        return Path(excel_path)
+        
+    except Exception as e:
+        logger.error(f"Error exporting Excel file: {e}")
+        import traceback
+        logger.error(f"Export error details: {traceback.format_exc()}")
+        raise
+
 def run_analysis(
     data_file_path,
     institution_names,
@@ -1427,47 +1433,64 @@ def run_analysis(
             
             # Note: Top Providers is removed as requested
             
-            # Save the Excel file to the institution-specific output directory
-            try:
-                # Fallback: Use pandas directly to save Excel file
-                timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
-                excel_path = output_dir / f"{prefix}_market_analysis_{timestamp}.xlsx"
-                
-                # Ensure directory exists
-                os.makedirs(output_dir, exist_ok=True)
-                
-                # Create Excel writer
-                with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
-                    for sheet_name, sheet_data in excel_data.items():
-                        # Make sure we're dealing with a DataFrame that has the right structure
-                        try:
-                            # First reset the index if it's not already a default integer index
-                            if not isinstance(sheet_data.index, pd.RangeIndex):
-                                sheet_data = sheet_data.reset_index()
-                            sheet_data.to_excel(writer, sheet_name=sheet_name, index=False)
-                        except Exception as e:
-                            print(f"Warning: Error saving sheet '{sheet_name}' to Excel: {e}")
-                            # Try again with a safer approach
-                            try:
-                                # Create a fresh DataFrame with only the data
-                                safe_df = pd.DataFrame(sheet_data.values)
-                                # If we have column names, use them
-                                if hasattr(sheet_data, 'columns'):
-                                    safe_df.columns = sheet_data.columns
-                                safe_df.to_excel(writer, sheet_name=sheet_name, index=False)
-                                print(f"Successfully saved sheet '{sheet_name}' using fallback method")
-                            except Exception as e2:
-                                print(f"Failed to save sheet '{sheet_name}' to Excel: {e2}")
-                
-                print(f"Analysis results saved to {excel_path}")
+            # Export to Excel using FileUtils
+            excel_filename = f"{prefix}_market_analysis"
             
+            # Create timestamp
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Create the EXACT full path to where we want the Excel file to be stored
+            full_output_path = str(output_dir / f"{excel_filename}_{timestamp}.xlsx")
+            
+            # Log the exact file path we're going to use
+            logger.info(f"SAVING EXCEL TO EXACT PATH: {full_output_path}")
+            
+            try:
+                # Use pandas ExcelWriter directly to ensure we save to the exact location
+                with pd.ExcelWriter(full_output_path, engine='openpyxl') as writer:
+                    for sheet_name, df in excel_data.items():
+                        if not df.empty:
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                
+                logger.info(f"SUCCESS - Saved Excel file directly to: {full_output_path}")
+                excel_path = full_output_path
+                
             except Exception as e:
-                print(f"Error saving Excel file: {e}")
-                print("This might happen if you don't have openpyxl installed. To install it, run: pip install openpyxl")
-        else:
-            print("No data to save to Excel.")
-        
-        print(f"Analysis complete! Results saved to {output_dir}")
+                logger.error(f"Error saving Excel file: {e}")
+                
+                # Try fallback using save_data_to_storage with explicit output_path
+                try:
+                    # This is a work-around attempt using output_path instead of output_type
+                    logger.info(f"Trying alternate save method with explicit output_path...")
+                    
+                    # Get just the directory part without the filename
+                    target_dir = os.path.dirname(full_output_path)
+                    
+                    # Ensure directory exists
+                    os.makedirs(target_dir, exist_ok=True)
+                    
+                    # Try saving with the full directory path as output_path
+                    excel_path = file_utils.save_data_to_storage(
+                        data=excel_data,
+                        file_name=f"{excel_filename}_{timestamp}",
+                        output_path=target_dir,  # Use target directory as output_path
+                        output_filetype=OutputFileType.XLSX,
+                        index=False
+                    )
+                    logger.info(f"SUCCESS - Saved Excel file via alternate method to: {excel_path}")
+                except Exception as e2:
+                    logger.error(f"All attempts to save Excel file failed: {e2}")
+                    excel_path = None
+            
+            # Final output
+            if excel_path:
+                logger.info(f"Analysis complete! Results saved to: {excel_path}")
+            else:
+                logger.error("Analysis complete, but FAILED to save Excel file")
+            
+        # except Exception as e:
+        #     print(f"Error saving Excel file: {e}")
+        #     excel_path = None
         
     except Exception as e:
         print(f"Error in analysis: {e}")
@@ -1475,76 +1498,317 @@ def run_analysis(
     # Return the main results for further use
     return results
 
-def main():
-    """
-    Main function to run the analysis pipeline
-    """
-    # Set up argument parser
-    parser = argparse.ArgumentParser(description='Analyze education market data for any institution')
-    parser.add_argument('--data-file', type=str, default="vipunen_data_sample.csv",
-                        help='Name of the data file in the data directory')
-    parser.add_argument('--institution', nargs='+', default=DEFAULT_INSTITUTION_NAMES,
-                        help='List of institution names to analyze (alternatives/variations)')
-    parser.add_argument('--short-name', type=str, default=DEFAULT_SHORT_NAME,
-                        help='Short name for the institution (used in plots and file naming)')
-    parser.add_argument('--reference-year', type=int, 
-                        help='Reference year for qualification selection')
-    parser.add_argument('--filter-degree-types', action='store_true', default=False,
-                        help='Whether to filter by degree types (only ammattitutkinto and erikoisammattitutkinto)')
-    parser.add_argument('--no-filter-degree-types', action='store_false', dest='filter_degree_types',
-                        help='Disable filtering by degree types (include all qualification types)')
-    parser.add_argument('--output-dir', type=str,
-                        help='Directory to save output files')
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Education market analysis workflow")
     
-    args = parser.parse_args()
-    
-    # Check for the data file in different locations
-    data_file = args.data_file
-    
-    # Define data directories
-    raw_dir = Path(ROOT_DIR) / "data" / "raw"
-    data_dir = Path(ROOT_DIR) / "data"
-    
-    # Check in raw directory
-    raw_file_path = raw_dir / data_file
-    if os.path.exists(raw_file_path):
-        data_file_path = raw_file_path
-    # Check in general data directory
-    elif os.path.exists(data_dir / data_file):
-        data_file_path = data_dir / data_file
-    # Try as an absolute path
-    elif os.path.exists(data_file):
-        data_file_path = Path(data_file)
-    else:
-        raise FileNotFoundError(f"Data file '{data_file}' not found in data directories.")
-    
-    print(f"Using data file: {data_file_path}")
-    
-    # Create output directory path if specified
-    output_dir = None
-    if args.output_dir:
-        # If output_dir is specified, use it as is
-        output_dir = Path(args.output_dir)
-    else:
-        # Otherwise use the default in data/reports
-        reports_dir = Path(ROOT_DIR) / "data" / "reports"
-        if not reports_dir.exists():
-            os.makedirs(reports_dir, exist_ok=True)
-        
-        dir_name = f"education_market_{args.short_name.lower()}"
-        output_dir = reports_dir / dir_name
-    
-    # Run the analysis
-    results = run_analysis(
-        data_file_path=data_file_path,
-        institution_names=args.institution,
-        institution_short_name=args.short_name,
-        output_dir=output_dir,
-        filter_degree_types=args.filter_degree_types,
-        reference_year=args.reference_year
+    parser.add_argument(
+        "--data-file", "-d",
+        dest="data_file",
+        help="Path to the data file (CSV)",
+        default="data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
     )
     
-    return results
+    parser.add_argument(
+        "--institution", "-i",
+        dest="institution",
+        help="Main name of the institution to analyze",
+        default="Rastor-instituutti"
+    )
+    
+    parser.add_argument(
+        "--short-name", "-s",
+        dest="short_name",
+        help="Short name for the institution (used in titles and file names)",
+        default="Rastor"
+    )
+    
+    parser.add_argument(
+        "--variant", "-v",
+        dest="variants",
+        action="append",
+        help="Name variant for the institution (can be specified multiple times)",
+        default=[]
+    )
+    
+    parser.add_argument(
+        "--output-dir", "-o",
+        dest="output_dir",
+        help="Base directory for output files (default: data/reports)",
+        default=None
+    )
+    
+    parser.add_argument(
+        "--use-dummy", "-u",
+        dest="use_dummy",
+        action="store_true",
+        help="Use dummy data instead of loading from file",
+        default=False
+    )
+    
+    parser.add_argument(
+        "--filter-qual-types",
+        dest="filter_qual_types",
+        action="store_true",
+        help="Filter data to include only ammattitutkinto and erikoisammattitutkinto",
+        default=False
+    )
+    
+    parser.add_argument(
+        "--filter-by-institution-quals",
+        dest="filter_by_inst_quals",
+        action="store_true",
+        help="Filter data to include only qualifications offered by the institution under analysis during the current and previous year",
+        default=False
+    )
+    
+    parser.add_argument(
+        "--reference-year", "-r",
+        dest="reference_year",
+        type=int,
+        help="Reference year for qualification selection",
+        default=None
+    )
+    
+    return parser.parse_args()
+
+def ensure_data_directory(file_path):
+    """
+    Ensure the file path includes the data directory.
+    If the path starts with 'raw/', prepend 'data/' to it.
+    """
+    if file_path.startswith("raw/"):
+        return f"data/{file_path}"
+    return file_path
+
+def main():
+    """Main function to run the full analysis workflow."""
+    # Parse command-line arguments
+    args = parse_arguments()
+    
+    # Step 1: Define parameters for the analysis
+    data_file_path = ensure_data_directory(args.data_file)
+    institution_name = args.institution
+    institution_short_name = args.short_name
+    
+    # Set default variants if none provided
+    if not args.variants:
+        institution_variants = [
+            "Rastor-instituutti ry", 
+            "Rastor-instituutti", 
+            "RASTOR OY",
+            "Rastor Oy"
+        ]
+    else:
+        # Add the main institution name to the variants
+        institution_variants = list(args.variants)
+        if institution_name not in institution_variants:
+            institution_variants.append(institution_name)
+    
+    # Step 2: Create output directories 
+    logger.info("Creating output directories")
+    dir_name = f"education_market_{institution_short_name.lower()}"
+    
+    # Create reports directory under data using FileUtils
+    reports_dir = file_utils.create_directory("reports", parent_dir="data")
+    
+    # Create the output directory under reports
+    output_dir = Path(reports_dir) / dir_name
+    output_dir.mkdir(exist_ok=True)
+    
+    # Create plots directory under the output directory
+    plots_dir = output_dir / "plots"
+    plots_dir.mkdir(exist_ok=True)
+    
+    # Override output directory if specified in args
+    if args.output_dir:
+        output_dir = Path(args.output_dir)
+        os.makedirs(output_dir, exist_ok=True)
+        plots_dir = output_dir / "plots"
+        os.makedirs(plots_dir, exist_ok=True)
+    
+    # Step 3: Load the raw data using FileUtils
+    logger.info(f"Loading raw data from {data_file_path}")
+    try:
+        if args.use_dummy:
+            logger.info("Using dummy dataset for demonstration purposes")
+            raw_data = create_dummy_dataset()
+        else:
+            # Use FileUtils to load the data
+            logger.info(f"Loading data from {data_file_path}")
+            path_obj = Path(data_file_path)
+            file_name = path_obj.name
+            
+            try:
+                # Try with semicolon separator for CSV files
+                if path_obj.suffix.lower() == '.csv':
+                    raw_data = file_utils.load_single_file(file_name, input_type="raw", sep=';')
+                else:
+                    # For non-CSV files, let FileUtils auto-detect the format
+                    raw_data = file_utils.load_single_file(file_name, input_type="raw")
+            except Exception:
+                # Try with comma separator if semicolon fails
+                raw_data = file_utils.load_single_file(file_name, input_type="raw", sep=',')
+        
+        logger.info(f"Loaded {len(raw_data)} rows of data")
+    except Exception as e:
+        logger.error(f"Could not find or load the data file at {data_file_path}: {e}")
+        logger.info("Creating a dummy dataset for demonstration purposes")
+        # Create a dummy dataset for demonstration
+        raw_data = create_dummy_dataset()
+
+    # Rest of main function remains the same until Excel export...
+
+    # Step 16: Export results to Excel
+    logger.info("Exporting results to Excel")
+    
+    # Prepare data for Excel export - ensure correct structure for Provider's Market
+    # Map column names from market_shares to match required output format
+    providers_market = market_shares.rename(columns={
+        'tilastovuosi': 'Year',
+        'tutkinto': 'Qualification',
+        'provider': 'Provider',
+        'volume_as_provider': 'Provider Amount',
+        'volume_as_subcontractor': 'Subcontractor Amount',
+        'total_volume': 'Total Volume',
+        'qualification_market_volume': 'Market Total',
+        'market_share': 'Market Share (%)'
+    }).copy()
+    
+    # Calculate Market Rank for each qualification and year
+    providers_market["Market Rank"] = np.nan
+    for (year, qual), group in providers_market.groupby(["Year", "Qualification"]):
+        ranks = group["Market Share (%)"].rank(ascending=False, method="min")
+        providers_market.loc[
+            (providers_market["Year"] == year) & 
+            (providers_market["Qualification"] == qual), 
+            "Market Rank"
+        ] = ranks
+    
+    # Add Market Share Growth and market gainer columns using market share changes data
+    providers_market["Market Share Growth (%)"] = np.nan
+    providers_market["market gainer"] = np.nan
+    
+    # For each provider and qualification, find the market share growth from the changes data
+    for index, row in providers_market.iterrows():
+        # Look for corresponding entry in market_share_changes
+        year = row["Year"]
+        qualification = row["Qualification"]
+        provider = row["Provider"]
+        
+        # Find change data for this provider/qualification
+        matching_changes = market_share_changes_df[
+            (market_share_changes_df["current_year"] == year) &
+            (market_share_changes_df["tutkinto"] == qualification) &
+            (market_share_changes_df["provider"] == provider)
+        ]
+        
+        if not matching_changes.empty:
+            providers_market.loc[index, "Market Share Growth (%)"] = matching_changes.iloc[0]["market_share_change_percent"]
+            providers_market.loc[index, "market gainer"] = matching_changes.iloc[0]["gainer_rank"]
+    
+    # First, identify all qualifications offered by the target institutions
+    target_institution_quals = set()
+    for _, row in providers_market.iterrows():
+        if row["Provider"] in institution_variants:
+            target_institution_quals.add((row["Year"], row["Qualification"]))
+    
+    # Filter to include all providers for those qualification-year combinations
+    providers_market_filtered = providers_market[
+        providers_market.apply(
+            lambda row: (row["Year"], row["Qualification"]) in target_institution_quals, 
+            axis=1
+        )
+    ].copy().reset_index(drop=True)
+    
+    # Ensure all required columns are present
+    required_columns = [
+        "Year", "Qualification", "Provider", "Provider Amount", "Subcontractor Amount",
+        "Total Volume", "Market Total", "Market Share (%)", "Market Rank", 
+        "Market Share Growth (%)", "market gainer"
+    ]
+    
+    # Use only the required columns in the specified order
+    providers_market_final = providers_market_filtered[required_columns]
+    
+    # Prepare Excel data
+    excel_data = {
+        "Total Volumes": total_volumes.drop(columns=['kouluttaja yhteensä'], errors='ignore').reset_index(drop=True) if not total_volumes.empty else pd.DataFrame(),
+        "Volumes by Qualification": volumes_long_df.reset_index(drop=True) if not volumes_long_df.empty else pd.DataFrame(),
+        "Provider's Market": providers_market_final.reset_index(drop=True) if not providers_market_final.empty else pd.DataFrame(),
+        "CAGR Analysis": cagr_analysis.reset_index(drop=True) if not cagr_analysis.empty else pd.DataFrame()
+    }
+    
+    # Add detailed logging for Excel export preparation
+    for sheet_name, df in excel_data.items():
+        if df.empty:
+            logger.warning(f"Sheet '{sheet_name}' is empty and may not be included in the Excel export")
+        else:
+            logger.info(f"Sheet '{sheet_name}' prepared with {len(df)} rows and {len(df.columns)} columns")
+    
+    # Export to Excel using FileUtils
+    excel_filename = f"{institution_short_name.lower()}_market_analysis"
+    
+    # Create timestamp
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    # Create the EXACT full path to where we want the Excel file to be stored
+    full_output_path = str(output_dir / f"{excel_filename}_{timestamp}.xlsx")
+    
+    # Log the exact file path we're going to use
+    logger.info(f"SAVING EXCEL TO EXACT PATH: {full_output_path}")
+    
+    try:
+        # Use pandas ExcelWriter directly to ensure we save to the exact location
+        with pd.ExcelWriter(full_output_path, engine='openpyxl') as writer:
+            for sheet_name, df in excel_data.items():
+                if not df.empty:
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+        
+        logger.info(f"SUCCESS - Saved Excel file directly to: {full_output_path}")
+        excel_path = full_output_path
+        
+    except Exception as e:
+        logger.error(f"Error saving Excel file: {e}")
+        
+        # Try fallback using save_data_to_storage with explicit output_path
+        try:
+            # This is a work-around attempt using output_path instead of output_type
+            logger.info(f"Trying alternate save method with explicit output_path...")
+            
+            # Get just the directory part without the filename
+            target_dir = os.path.dirname(full_output_path)
+            
+            # Ensure directory exists
+            os.makedirs(target_dir, exist_ok=True)
+            
+            # Try saving with the full directory path as output_path
+            excel_path = file_utils.save_data_to_storage(
+                data=excel_data,
+                file_name=f"{excel_filename}_{timestamp}",
+                output_path=target_dir,  # Use target directory as output_path
+                output_filetype=OutputFileType.XLSX,
+                index=False
+            )
+            logger.info(f"SUCCESS - Saved Excel file via alternate method to: {excel_path}")
+        except Exception as e2:
+            logger.error(f"All attempts to save Excel file failed: {e2}")
+            excel_path = None
+    
+    # Final output
+    if excel_path:
+        logger.info(f"Analysis complete! Results saved to: {excel_path}")
+    else:
+        logger.error("Analysis complete, but FAILED to save Excel file")
+    
+    return {
+        "total_volumes": total_volumes,
+        "volumes_by_qualification": volumes_by_qual_df,
+        "volumes_long": volumes_long_df,
+        "market_shares": market_shares,
+        "qualification_cagr": cagr_analysis,
+        "excel_path": excel_path if 'excel_path' in locals() else None
+    }
 
 if __name__ == "__main__":
     main() 

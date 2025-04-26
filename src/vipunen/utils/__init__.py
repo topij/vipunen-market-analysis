@@ -1,5 +1,5 @@
 """Utility modules for the Vipunen project."""
 
-from vipunen.utils.file_handler import VipunenFileHandler
+# Import of file_handler removed as it has been archived
 
-__all__ = ['VipunenFileHandler'] 
+__all__ = [] 

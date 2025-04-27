@@ -656,10 +656,10 @@ class MarketAnalyzer:
             if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
                 quals_to_exclude_low_volume = quals_below_last.intersection(quals_below_current)
                 log_year_text_low_vol = f"BOTH {last_full_year} and {self.max_year}"
-            elif not quals_below_current.empty:
+            elif quals_below_current:
                  quals_to_exclude_low_volume = quals_below_current
                  log_year_text_low_vol = f"{self.max_year}"
-            elif not quals_below_last.empty:
+            elif quals_below_last:
                  quals_to_exclude_low_volume = quals_below_last
                  log_year_text_low_vol = f"{last_full_year}"
             else:
@@ -820,10 +820,10 @@ class MarketAnalyzer:
             if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
                 quals_to_exclude_low_volume = quals_below_last.intersection(quals_below_current)
                 log_year_text_low_vol = f"BOTH {last_full_year} and {self.max_year}"
-            elif not quals_below_current.empty:
+            elif quals_below_current:
                  quals_to_exclude_low_volume = quals_below_current
                  log_year_text_low_vol = f"{self.max_year}"
-            elif not quals_below_last.empty:
+            elif quals_below_last:
                  quals_to_exclude_low_volume = quals_below_last
                  log_year_text_low_vol = f"{last_full_year}"
             else:

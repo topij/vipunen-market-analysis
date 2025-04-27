@@ -7,7 +7,7 @@ This document provides an overview of the market analysis features available in 
 The `MarketAnalyzer` class provides several core analysis capabilities:
 
 1.  **Volume Analysis**: Track overall student volumes and volumes per qualification for the target institution.
-2.  **Market Share Analysis**: Calculate market shares, growth, and rankings for all providers within qualifications relevant to the target institution (`detailed_providers_market`). It also provides a simplified year-over-year market share overview (`market_shares`).
+2.  **Market Share Analysis**: Calculate market shares, growth, and rankings for all providers within qualifications relevant to the target institution (`detailed_providers_market`). It also provides a simplified year-over-year market share overview (`market_shares`). See [Excel Export](EXCEL_EXPORT.md) for sheet details.
 3.  **Growth Analysis**: Analyze year-over-year growth trends for the total market size of each qualification (`qualification_market_yoy_growth`).
 4.  **Compound Annual Growth Rate (CAGR)**: Calculate the long-term growth rate (CAGR) for qualifications based *only* on the target institution's historical volume (`qualification_cagr`).
 5.  **Filtering**: Identifies qualifications with very low total market volume or where the target institution has become inactive, allowing for selective filtering of results.
@@ -63,14 +63,14 @@ The main method is `analyze()`, which orchestrates all calculations and returns 
 
 ## Analysis Workflow Example (using `analyze_cli.py`)
 
-The `src/vipunen/cli/analyze_cli.py` script orchestrates the typical workflow:
+The `src/vipunen/cli/analyze_cli.py` script (see [CLI Guide](CLI_GUIDE.md)) orchestrates the typical workflow:
 
 1.  **Load Configuration**: Reads `config/config.yaml` (or specified file).
-2.  **Load and Prepare Data**: Uses `data_loader` and `data_processor`.
+2.  **Load and Prepare Data**: Uses `data_loader` and `data_processor` (see [Data Requirements](DATA_REQUIREMENTS.md)).
 3.  **Initialize `MarketAnalyzer`**: Passes cleaned data and sets `institution_names` and `institution_short_name` from config.
 4.  **Run Analysis**: Calls `analyzer.analyze(min_market_size_threshold=...)`.
-5.  **Export to Excel**: Uses `export_to_excel` to save the results dictionary from `analyze()` into different sheets.
-6.  **Generate Visualizations**: Uses `EducationVisualizer` with the results from `analyze()` to create plots.
+5.  **Export to Excel**: Uses `export_to_excel` to save the results dictionary from `analyze()` into different sheets (see [Excel Export](EXCEL_EXPORT.md)).
+6.  **Generate Visualizations**: Uses `EducationVisualizer` with the results from `analyze()` to create plots (see [Visualization Features](VISUALIZATION.md)).
 
 ```python
 # Simplified flow from analyze_cli.py

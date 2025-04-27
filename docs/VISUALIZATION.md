@@ -4,7 +4,7 @@ This document provides a brief overview of the visualization capabilities provid
 
 ## `EducationVisualizer` Class
 
-The `src/vipunen/visualization/education_visualizer.py` module contains the `EducationVisualizer` class, which offers methods to create various standard plots based on the analysis results from `MarketAnalyzer`.
+The `src/vipunen/visualization/education_visualizer.py` module contains the `EducationVisualizer` class, which offers methods to create various standard plots based on the analysis results from `MarketAnalyzer` (see [Market Analysis Features](MARKET_ANALYSIS.md)).
 
 The CLI script (`src/vipunen/cli/analyze_cli.py`) uses this class in its `generate_visualizations` function to automatically create a suite of plots.
 
@@ -21,7 +21,7 @@ The CLI script (`src/vipunen/cli/analyze_cli.py`) uses this class in its `genera
 
 ## Visualization Generation in `analyze_cli.py`
 
-The `generate_visualizations` function in `analyze_cli.py` uses the results from `MarketAnalyzer.analyze()` and calls the appropriate `EducationVisualizer` methods.
+The `generate_visualizations` function in `analyze_cli.py` (see [CLI Guide](CLI_GUIDE.md)) uses the results from `MarketAnalyzer.analyze()` and calls the appropriate `EducationVisualizer` methods.
 
 **Key Points:**
 

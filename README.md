@@ -2,152 +2,187 @@
 
 This project provides tools for analyzing the Finnish vocational education market from a provider's perspective. It focuses on analyzing ammattitutkinto (further vocational qualifications) and erikoisammattitutkinto (specialist vocational qualifications).
 
-## Project Structure
+The Vipunen project is a specialized data analysis toolkit designed for educational institutions to gain insights into the Finnish vocational education market. It allows institutions to:
 
-The code is organized into a package structure with clear separation of concerns:
+- Analyze their market position and trends
+- Identify growing and declining qualifications
+- Compare performance against competitors
+- Track student volumes across years
+- Calculate compound annual growth rates (CAGR) for qualifications
+- Generate comprehensive reports and visualizations
 
-```
-src/vipunen/
-├── data/               # Data loading and processing
-│   ├── data_loader.py  # Functions for loading the raw data
-│   └── data_processor.py  # Functions for cleaning and preparing data
-├── analysis/           # Market and qualification analysis
-│   ├── market_share_analyzer.py  # Market share calculations
-│   └── qualification_analyzer.py  # Qualification-specific metrics
-├── visualization/      # Plotting and visualization
-│   ├── volume_plots.py  # Plots for volume metrics
-│   ├── market_plots.py  # Plots for market share metrics
-│   └── growth_plots.py  # Plots for growth metrics
-├── utils/             # Utility functions and helpers
-│   └── file_handler.py  # FileUtils integration
-└── export/             # Data export functionality
-    └── excel_exporter.py  # Excel export utilities
-```
+See the full documentation in the [docs](docs/INDEX.md) directory.
 
-## FileUtils Integration
+## Installation and Setup
 
-This project uses the [FileUtils](https://github.com/topi-python/FileUtils) package for standardized file operations. The integration provides:
+### Prerequisites
 
-- Consistent data loading and saving across the application
-- Standardized directory structure management
-- Automatic timestamp-based file naming
-- Metadata tracking for data lineage
+- Python 3.8+
+- Conda (recommended for environment management)
 
-For details on how FileUtils is integrated, see [FileUtils Integration Guide](docs/FILEUTILS_INTEGRATION.md).
+### Using Conda
 
-## Usage
-
-### Command-line Interface
-
-The easiest way to run the analysis is using the command-line interface provided by `run_analysis.py`:
-
-```bash
-python run_analysis.py --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy --short-name "RI"
-```
-
-Optional arguments:
-- `--filter-qual-types`: Filter data to include only ammattitutkinto and erikoisammattitutkinto (default: False)
-- `--filter-by-institution-quals`: Filter data to include only qualifications offered by the institution under analysis (default: False)
-- `--output-dir`: Base directory for output files (default: data/reports)
-- `--variants`: Additional name variants for the institution (can be specified multiple times)
-- `--use-dummy`: Use dummy data instead of loading from file (for testing purposes)
-
-### Programmatic Usage
-
-For more advanced customization, the main workflow is demonstrated in `analyze_education_market.py`:
-
-```python
-python analyze_education_market.py
-```
-
-This script shows the complete workflow:
-1. Loading and preprocessing data
-2. Calculating volumes and market shares
-3. Analyzing qualification growth trends
-4. Visualizing the results
-5. Exporting to Excel
-
-## Input Data Format
-
-The analysis expects a CSV file with the following columns:
-- `tilastovuosi`: The year of the data
-- `suorituksenTyyppi`: Type of completion 
-- `tutkintotyyppi`: Type of qualification (Ammattitutkinnot/Erikoisammattitutkinnot)
-- `tutkinto`: Name of the qualification
-- `koulutuksenJarjestaja`: Main education provider
-- `hankintakoulutuksenJarjestaja`: Subcontractor provider (if exists)
-- `nettoopiskelijamaaraLkm`: Net student count, average yearly volume
-
-## Output
-
-The analysis produces:
-1. Visual plots saved in the specified output directory
-2. Excel file with the following worksheets:
-   - **Total Volumes**: Shows the institution's total volumes by year
-   - **Volumes by Qualification**: Long-format table with year, qualification, provider amount, and subcontractor amount
-   - **Provider's Market**: Comprehensive market data including market share and year-over-year growth for each qualification and provider
-   - **CAGR Analysis**: Detailed qualification history with first/last years offered, start/end volumes, and growth rates
-3. Console logs showing the progress of the analysis
-
-## Example Workflow
-
-```python
-# Load and prepare data
-raw_data = load_data("amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv")
-df_clean = clean_and_prepare_data(raw_data, institution_names=institution_variants)
-
-# Apply optional filters
-if filter_qual_types:
-    df_filtered = df_clean[df_clean["tutkintotyyppi"].isin(["Ammattitutkinnot", "Erikoisammattitutkinnot"])]
-
-# Calculate market shares
-market_shares = calculate_market_shares(df_filtered, institution_variants)
-
-# Calculate market share changes for all consecutive year pairs
-market_share_changes = calculate_market_share_changes_for_all_years(market_shares, all_years)
-
-# Create visualizations
-plot_total_volumes(total_volumes, institution_short_name="Rastor")
-
-# Export to Excel
-exporter = ExcelExporter(output_dir, prefix="rastor")
-excel_path = exporter.export_to_excel(excel_data)
-```
-See more in [WORKFLOW.md](docs/WORKFLOW.md)
-
-## Key Metrics
-
-The analysis calculates various metrics for vocational education providers:
-- Total student volumes by year
-- Volumes by qualification (as both main provider and subcontractor)
-- Market shares in different qualifications
-- Year-over-Year growth for all years in the dataset
-- Market rank and market gainer rank
-- Compound Annual Growth Rate (CAGR) for qualifications
-
-## Dependencies
-
-- pandas
-- numpy
-- matplotlib
-- seaborn
-- pathlib
-- logging
-- FileUtils (v0.6.1+)
-
-You can set up the environment using conda:
+The recommended way to set up the environment is using the provided `environment.yaml` file:
 
 ```bash
 conda env create -f environment.yaml
 conda activate vipunen-analytics
 ```
 
+### Manual Installation (Not Recommended)
+
+If you prefer not to use Conda, you can install the dependencies manually (ensure versions are compatible):
+
+```bash
+pip install pandas numpy matplotlib seaborn pathlib PyYAML FileUtils squarify
+```
+*(See `environment.yaml` for specific versions).*
+
+### Development Installation
+
+For development work, install the package in development mode after setting up the environment:
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+### Command-line Interface
+
+The easiest way to run the analysis is using the command-line interface provided by `run_analysis.py`.
+
+```bash
+python run_analysis.py --data-file <path_to_data> --institution <institution_name> --short-name <short_name>
+```
+
+For example:
+
+```bash
+python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
+```
+
+See the full [CLI Guide](docs/CLI_GUIDE.md) for all available arguments and options like filtering and specifying output directories.
+
+### Programmatic Usage
+
+For more advanced customization, you can use the `MarketAnalyzer` class directly in your Python scripts. The primary workflow involves:
+
+1.  Loading and preparing data (see `src/vipunen/data/`).
+2.  Initializing `MarketAnalyzer` with the data and institution details.
+3.  Calling the `analyze()` method.
+4.  Using the resulting dictionary of DataFrames for export or further analysis.
+
+```python
+from src.vipunen.data.data_loader import load_data
+from src.vipunen.data.data_processor import clean_and_prepare_data
+from src.vipunen.analysis.market_analyzer import MarketAnalyzer
+from src.vipunen.export.excel_exporter import export_to_excel # Example exporter
+
+# Configuration (example)
+data_path = "data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
+institution_name = "Rastor-instituutti ry"
+institution_variants = ["Rastor-instituutti ry", "Rastor Oy"]
+institution_short_name = "RI"
+min_market_size_threshold = 5
+output_dir = "data/reports/education_market_ri"
+
+# Load and prepare data
+raw_data = load_data(data_path)
+processed_data = clean_and_prepare_data(raw_data) # Apply cleaning as needed
+
+# Initialize analyzer
+analyzer = MarketAnalyzer(processed_data)
+analyzer.institution_names = institution_variants
+analyzer.institution_short_name = institution_short_name
+
+# Run analysis
+analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size_threshold)
+
+# Export (example)
+excel_file = export_to_excel(
+    analysis_results,
+    f"{institution_short_name}_analysis",
+    output_dir=output_dir
+)
+print(f"Exported results to {excel_file}")
+
+# Further programmatic steps (e.g., custom visualization) could follow
+```
+
+See the [Programmatic Usage Guide](docs/PROGRAMMATIC_USAGE.md) and the [Market Analysis Features](docs/MARKET_ANALYSIS.md) documentation for more details.
+
+## Input Data Format
+
+The analysis expects a CSV file with specific columns representing Finnish Vipunen education data. Key columns include:
+
+- `tilastovuosi`: The year of the data.
+- `tutkintotyyppi`: Type of qualification (e.g., Ammattitutkinnot, Erikoisammattitutkinnot).
+- `tutkinto`: Name of the qualification.
+- `koulutuksenJarjestaja`: Main education provider.
+- `hankintakoulutuksenJarjestaja`: Subcontractor provider (if it exists).
+- `nettoopiskelijamaaraLkm`: Net student count (average yearly volume).
+
+See [Data Requirements](docs/DATA_REQUIREMENTS.md) for full details.
+
+## Output
+
+The analysis typically produces:
+
+1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
+2.  A set of **visualization plots** (PNG images) saved in a `plots` subdirectory, showing trends in volumes, market shares, and growth. See [Visualization Documentation](docs/VISUALIZATION.md).
+3.  Console logs detailing the analysis progress.
+
+Outputs are saved by default under `data/reports/[institution_short_name]/`.
+
+## Code Structure
+
+The code is organized into a package structure:
+
+```
+src/vipunen/
+├── analysis/              # Market and qualification analysis
+│   ├── education_market.py       # (Potentially older analysis functions)
+│   ├── market_analyzer.py        # **Core analysis orchestration class**
+│   ├── market_share_analyzer.py  # Specialized market share calculations
+│   └── qualification_analyzer.py # Qualification-specific metrics (CAGR)
+├── cli/                  # Command-line interface
+│   ├── analyze_cli.py     # Main CLI workflow logic
+│   └── argument_parser.py # CLI argument parsing
+├── config/               # Configuration management (config.yaml)
+├── data/                 # Data loading and processing
+│   ├── data_loader.py    # Functions for loading the raw data
+│   ├── data_processor.py # Functions for cleaning and preparing data
+│   └── dummy_generator.py # Generates dummy data for testing
+├── export/               # Data export functionality
+│   └── excel_exporter.py # Excel export utilities
+├── utils/                # Utility functions and helpers
+│   └── file_utils_config.py # FileUtils integration configuration
+└── visualization/        # Plotting and visualization
+    └── education_visualizer.py # Class for creating standard plots
+```
+
+## Dependencies
+
+Key dependencies include:
+
+- pandas
+- numpy
+- matplotlib
+- seaborn
+- pathlib
+- PyYAML
+- FileUtils (v0.6.1+)
+- squarify
+
+See `environment.yaml` for a full list and versions.
+
+## FileUtils Integration
+
+This project utilizes the [FileUtils](https://github.com/topi-python/FileUtils) package for standardized file operations like loading data and saving reports/plots. This aims to provide consistent path handling and directory structures. The configuration is managed in `src/vipunen/utils/file_utils_config.py`.
+
 ## Troubleshooting
 
-If you encounter issues with FileUtils integration, check:
-
-1. **Path Resolution Issues**: Ensure paths don't have duplicated directory prefixes (e.g., `data/raw/data/raw/`)
-2. **Excel Export Errors**: If you see `'str' object has no attribute 'value'` errors, the issue might be with how FileUtils handles enums in your version
-3. **Missing Data Files**: Verify the expected data file exists at the specified location
-
-For more troubleshooting tips, refer to the [FileUtils Integration Guide](docs/FILEUTILS_INTEGRATION.md). 
+- **FileUtils Issues**: If you encounter path or export errors related to FileUtils, ensure the package is installed and check the configuration in `src/vipunen/utils/file_utils_config.py`.
+- **Missing Data Files**: Verify the expected data file exists at the specified location.
+- **Dependency Conflicts**: Use the provided `environment.yaml` with Conda to avoid potential conflicts. 

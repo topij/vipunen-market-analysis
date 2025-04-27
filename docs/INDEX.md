@@ -6,7 +6,7 @@ Welcome to the Vipunen Project documentation! This documentation provides compre
 
 ### Core Documentation
 
-- [Project Overview](README.md) - Introduction to the Vipunen project and its capabilities
+- [Project Overview](../README.md) - Introduction to the Vipunen project and its capabilities
 - [Command-Line Interface Guide](CLI_GUIDE.md) - How to use the CLI for quick analysis
 - [Programmatic Usage Guide](PROGRAMMATIC_USAGE.md) - How to use the library programmatically
 - [Tutorial](TUTORIAL.md) - Step-by-step guide to get started
@@ -52,7 +52,3 @@ src/vipunen/
 - Excel reporting with multiple worksheets
 - Command-line interface for easy usage
 - Programmatic access for custom analysis workflows
-
-## Support and Contributing
-
-This documentation is for the current version of the Vipunen project with the completely rewritten codebase. For questions about usage or to report issues, please contact the project maintainers. 

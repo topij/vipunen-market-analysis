@@ -80,7 +80,7 @@ def export_to_excel(data_dict, file_name, output_type="reports", **kwargs):
 
 ## Standard Excel Worksheets
 
-The standard Excel export, generated using the results from `MarketAnalyzer.analyze()`, includes the following worksheets:
+The standard Excel export, generated using the results from `MarketAnalyzer.analyze()` (see [Market Analysis Features](MARKET_ANALYSIS.md) for details on filtering), includes the following worksheets:
 
 | Worksheet Name             | Content                                                                                                   | Filtering Applied (based on `analyze()` logic) |
 | :------------------------- | :-------------------------------------------------------------------------------------------------------- | :--------------------------------------------- |

@@ -1,6 +1,8 @@
 # Command-Line Interface Guide
 
-The Vipunen project provides a command-line interface for easy analysis of education market data without writing code. This guide explains how to use this interface effectively.
+The Vipunen project provides a command-line interface (`run_analysis.py` wrapping `src/vipunen/cli/analyze_cli.py`) for easy analysis of education market data without writing code. This guide explains how to use this interface effectively.
+
+See also: [Market Analysis Features](MARKET_ANALYSIS.md), [Data Requirements](DATA_REQUIREMENTS.md)
 
 ## Basic Usage
 
@@ -24,7 +26,7 @@ python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_t
 | `--institution` | `-i` | Main name of the institution to analyze | `Rastor-instituutti ry` |
 | `--short-name` | `-s` | Short name for the institution (used in titles and file names) | `RI` |
 | `--variant` | `-v` | Name variant for the institution (can be specified multiple times) | `[]` |
-| `--output-dir` | `-o` | Base directory for output files | `data/reports` |
+| `--output-dir` | `-o` | Base directory for output files | `data/reports/[institution_short_name]/` |
 | `--use-dummy` | `-u` | Use dummy data instead of loading from file | `False` |
 | `--filter-qual-types` | N/A | Filter data to include only ammattitutkinto and erikoisammattitutkinto | `False` |
 | `--filter-by-institution-quals` | N/A | Filter data to include only qualifications offered by the institution | `False` |
@@ -65,11 +67,14 @@ python run_analysis.py --institution "Example Institute" --use-dummy
 
 ## Output Directory
 
-By default, outputs are saved to `data/reports`. You can specify a different directory:
+By default, outputs are saved to `data/reports/[institution_short_name]/`. Within this directory, an Excel file (see [Excel Export](EXCEL_EXPORT.md)) and a `plots` subdirectory (see [Visualization Features](VISUALIZATION.md)) will be created.
+
+You can specify a different *base* output directory:
 
 ```bash
 python run_analysis.py --institution "Rastor-instituutti" --output-dir "my_analysis_results"
 ```
+This will create `my_analysis_results/education_market_ri/` etc.
 
 ## Complete Example
 

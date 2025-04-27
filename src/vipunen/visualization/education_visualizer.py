@@ -510,60 +510,95 @@ class EducationVisualizer:
             fig, ax: Matplotlib figure and axis objects
         """
         fig, ax = plt.subplots(figsize=figsize)
-
-        # Use x_col for coloring if color_col is not specified
+        
+        # Determine bar colors (positive/negative if not specified)
         if color_col is None:
-            color_col = x_col
-
-        # Sort data if requested
-        if sort_by:
-            data = data.sort_values(by=sort_by)
-        # else: # Assuming data is pre-sorted if sort_by is None
-        #     data = data.sort_values(by=x_col)
-
-        # Determine colors based on the sign of the value in color_col
-        if color_col and color_col in data.columns and pd.api.types.is_numeric_dtype(data[color_col]):
-            colors = [COLOR_PALETTES["growth"]["positive"] if val >= 0 else
-                      COLOR_PALETTES["growth"]["negative"] for val in data[color_col]]
+            colors = [COLOR_PALETTES["growth"]["positive"] if val >= 0 else COLOR_PALETTES["growth"]["negative"]
+                      for val in data[x_col]]
+            palette = None
         else:
-            # Fallback to a single color if coloring logic doesn't apply
-            colors = [COLOR_PALETTES["main"][0]] * len(data)
+            colors = None # Use palette instead
+            palette = data[color_col].map(COLOR_PALETTES["main"])
+        
+        # Create bar plot
+        sns.barplot(x=x_col, y=y_col, data=data, ax=ax, orient='h', 
+                    palette=palette, hue=None, color=None if colors is None else colors[0], # Pass single color if uniform
+                    dodge=False)
+        
+        # If using specific colors list, apply them manually after plot creation
+        if colors is not None and palette is None:
+            for i, bar in enumerate(ax.patches):
+                bar.set_color(colors[i])
+        
+        # Apply common formatting (partially)
+        ax.set_title(title, fontsize=18, fontweight='bold', pad=20, loc='left')
 
-        # Prepare y-axis labels with optional volume/detail
-        if volume_col and volume_col in data.columns:
-            try:
-                y_labels_raw = [f"{row[y_col]} {y_label_detail_format.format(row[volume_col])}" for _, row in data.iterrows()]
-            except (ValueError, TypeError):
-                 # Fallback if formatting fails
-                y_labels_raw = [f"{row[y_col]} ({row[volume_col]})" for _, row in data.iterrows()]
-        else:
-            y_labels_raw = data[y_col].tolist()
+        # Customize axes for horizontal bar chart
+        ax.set_ylabel(None) # Remove y-axis label
+        ax.set_xlabel(x_label_text, fontsize=10, color='gray', labelpad=10)
 
-        y_labels_wrapped = [self._wrap_text(label, wrap_width) for label in y_labels_raw]
+        # --- Add Labels to the Right of Bars --- 
+        # Turn off default y-axis labels and ticks completely
+        ax.tick_params(axis='y', left=False, labelleft=False, length=0)
 
-        # Create horizontal bars using numerical indices for y position
-        y_pos = np.arange(len(data))
-        bars = ax.barh(y_pos, data[x_col], color=colors)
-        ax.set_yticks(y_pos)
-        ax.set_yticklabels(y_labels_wrapped, fontsize=9)
+        # Determine offset for placing text next to bars
+        x_max = data[x_col].max()
+        x_min = data[x_col].min()
+        offset = (x_max - x_min) * 0.01 # Small offset relative to data range
+        
+        # Iterate through the bars (patches) and add text labels
+        for i, bar in enumerate(ax.patches):
+            # Get data corresponding to the bar
+            row = data.iloc[i]
+            bar_value = bar.get_width()
+            y_pos = bar.get_y() + bar.get_height() / 2
+            
+            # Prepare label text
+            label_base = self._wrap_text(row[y_col], wrap_width)
+            label_full = label_base
+            if volume_col and pd.notna(row[volume_col]):
+                try:
+                    detail = y_label_detail_format.format(row[volume_col])
+                    label_full = f"{label_base} {detail}"
+                except (ValueError, TypeError, KeyError):
+                     # Fallback if format or column fails
+                     label_full = f"{label_base} ({row.get(volume_col, '?')})"
+            
+            # Determine text position and alignment
+            if bar_value >= 0:
+                x_pos = bar_value + offset
+                ha = 'left'
+            else:
+                # Place text slightly left of the bar end for negative values
+                x_pos = bar_value - offset 
+                ha = 'right'
 
-        # Apply common formatting
-        self.apply_common_formatting(fig, ax, title, caption, x_label=x_label_text, y_label=None)
+            ax.text(x=x_pos, y=y_pos, s=label_full, 
+                    ha=ha, va='center', fontsize=10, color='#333333')
+        
+        # --- Styling Refinements --- 
+        # Remove spines
+        sns.despine(ax=ax, left=True, bottom=True, top=True, right=True)
+        
+        # Adjust Gridlines (Turn off y-grid now)
+        ax.xaxis.grid(False) # Turn off vertical grid lines
+        ax.yaxis.grid(False) # Turn off horizontal grid lines
+        # Optional: Add a vertical line at x=0 if needed
+        if x_min < 0 < x_max:
+             ax.axvline(0, color='#cccccc', linewidth=0.8, linestyle='-', zorder=0)
 
-        # Customize for horizontal bar chart
-        ax.tick_params(axis='y', length=0) # Remove y-tick marks
+        # Ensure axis limits accommodate labels (adjust right/left margin in subplots_adjust)
+        # Determine max label width? (Complex) - Let's just add generous padding
+        plt.subplots_adjust(left=0.1, bottom=0.15, right=0.8, top=0.85) # Reduced left, Increased right
 
-        # Add a vertical line at x=0 if we have positive and negative values
-        if data[x_col].min() < 0 and data[x_col].max() > 0:
-            ax.axvline(x=0, color='#555555', linestyle='-', alpha=0.7, linewidth=1)
-
-        # Adjust layout
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to prevent caption/title overlap
+        # Add caption if provided
+        if caption:
+            fig.text(0.01, 0.01, caption, fontsize=9, color='#555555', ha='left', va='bottom')
 
         # Save if filename provided
         if filename:
             self.save_visualization(fig, filename)
-
+            
         return fig, ax
     
     def create_treemap(self, data, value_col, label_col, detail_col=None, title=None,

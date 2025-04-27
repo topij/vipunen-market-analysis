@@ -94,21 +94,18 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
         ]
         # Sum volume over the last two years for the institution
         active_grouped = active_df.groupby('Qualification')['Total Volume'].sum()
-        active_qualifications = active_grouped[active_grouped > 0].index.tolist()
-        logger.info(f"Found {len(active_qualifications)} active qualifications for {inst_short_name} in {years_to_check_activity}." )
+        # --- Use the >= 1 threshold consistent with analyzer --- 
+        active_qualifications = active_grouped[active_grouped >= 1].index.tolist()
+        logger.info(f"Found {len(active_qualifications)} active qualifications (volume >= 1 in {years_to_check_activity}) for {inst_short_name}: {active_qualifications}" )
     else:
         logger.warning("Could not determine active qualifications due to missing year data.")
-        # Fallback: use all qualifications the institution ever offered
+        # Fallback: use all qualifications the institution ever offered in the filtered data
         active_qualifications = detailed_df[detailed_df['Provider'].isin(inst_names)]['Qualification'].unique().tolist()
 
-    # Get Top N Qualifications based on latest year volume for the institution
-    inst_latest_df = detailed_df[(detailed_df['Provider'].isin(inst_names)) & (detailed_df['Year'] == max_year)]
-    top_n_quals = inst_latest_df.nlargest(5, 'Total Volume')['Qualification'].tolist()
-    logger.info(f"Top {len(top_n_quals)} qualifications for plots: {top_n_quals}")
-
     # --- Plot 2: Line Chart (Market Share Evolution) - Loop per Qualification ---
-    logger.info("Generating Market Share Line Charts for top qualifications...")
-    for qual in top_n_quals:
+    logger.info(f"Generating Market Share Line Charts for {len(active_qualifications)} active qualifications...")
+    # --- Iterate over ALL active qualifications --- 
+    for qual in active_qualifications: 
         try:
             qual_df = detailed_df[detailed_df['Qualification'] == qual]
             if qual_df.empty:
@@ -221,8 +218,9 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
         logger.warning("Skipping Qualification Growth plot: Data not available.")
 
     # --- Plot 6: Horizontal Bar (Provider Gainers/Losers) - Loop per Qualification ---
-    logger.info("Generating Provider Gainer/Loser Bar Charts for top qualifications...")
-    for qual in top_n_quals:
+    logger.info(f"Generating Provider Gainer/Loser Bar Charts for {len(active_qualifications)} active qualifications...")
+    # --- Iterate over ALL active qualifications --- 
+    for qual in active_qualifications: 
         try:
             latest_qual_df = detailed_df[
                 (detailed_df['Qualification'] == qual) & (detailed_df['Year'] == plot_reference_year)
@@ -251,49 +249,50 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
             logger.error(f"Failed to generate Gainer/Loser plot for {qual}: {e}", exc_info=True)
 
     # --- Plot 7: Treemap ---
-    if inst_latest_df is not None and not inst_latest_df.empty:
-        try:
-            logger.info("Generating Market Share Treemap...")
-            # Use data from plot_reference_year for the treemap
-            treemap_base_data = detailed_df[
-                (detailed_df['Provider'].isin(inst_names)) &
-                (detailed_df['Year'] == plot_reference_year)
-            ].copy()
+    # inst_latest_df = detailed_df[(detailed_df['Provider'].isin(inst_names)) & (detailed_df['Year'] == max_year)]
+    # if inst_latest_df is not None and not inst_latest_df.empty:
+    #     try:
+    #         logger.info("Generating Market Share Treemap...")
+    #         # Use data from plot_reference_year for the treemap
+    #         treemap_base_data = detailed_df[
+    #             (detailed_df['Provider'].isin(inst_names)) &
+    #             (detailed_df['Year'] == plot_reference_year)
+    #         ].copy()
 
-            # Filter for active qualifications
-            treemap_base_data = treemap_base_data[treemap_base_data['Qualification'].isin(active_qualifications)]
+    #         # Filter for active qualifications
+    #         treemap_base_data = treemap_base_data[treemap_base_data['Qualification'].isin(active_qualifications)]
             
-            # Ensure Market Total is present for sizing
-            if 'Market Total' not in treemap_base_data.columns:
-                 # Merge market total if missing (might happen if filtered differently)
-                 ref_year_totals = detailed_df[detailed_df['Year'] == plot_reference_year][['Qualification', 'Market Total']].drop_duplicates()
-                 treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on='Qualification', how='left')
+    #         # Ensure Market Total is present for sizing
+    #         if 'Market Total' not in treemap_base_data.columns:
+    #              # Merge market total if missing (might happen if filtered differently)
+    #              ref_year_totals = detailed_df[detailed_df['Year'] == plot_reference_year][['Qualification', 'Market Total']].drop_duplicates()
+    #              treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on='Qualification', how='left')
             
-            # Apply RI-specific adjustment for 'Liiketoiminnan PT'
-            if analyzer.institution_short_name == "RI":
-                pt_index = treemap_base_data[treemap_base_data['Qualification'] == 'Liiketoiminnan PT'].index
-                if not pt_index.empty:
-                    logger.info("Applying RI-specific adjustment: Halving Market Total for Liiketoiminnan PT in Treemap.")
-                    treemap_base_data.loc[pt_index, 'Market Total'] = treemap_base_data.loc[pt_index, 'Market Total'] / 2
+    #         # Apply RI-specific adjustment for 'Liiketoiminnan PT'
+    #         if analyzer.institution_short_name == "RI":
+    #             pt_index = treemap_base_data[treemap_base_data['Qualification'] == 'Liiketoiminnan PT'].index
+    #             if not pt_index.empty:
+    #                 logger.info("Applying RI-specific adjustment: Halving Market Total for Liiketoiminnan PT in Treemap.")
+    #                 treemap_base_data.loc[pt_index, 'Market Total'] = treemap_base_data.loc[pt_index, 'Market Total'] / 2
                  
-            plot_data = treemap_base_data.sort_values('Market Total', ascending=False)
+    #         plot_data = treemap_base_data.sort_values('Market Total', ascending=False)
             
-            # Check required columns exist before plotting
-            required_cols = ['Market Total', 'Qualification', 'Market Share (%)']
-            if not plot_data.empty and all(col in plot_data.columns for col in required_cols) and not plot_data[required_cols].isnull().any().any():
-                 visualizer.create_treemap(
-                     data=plot_data,
-                     value_col='Market Total', # Use adjusted value
-                     label_col='Qualification',
-                     detail_col='Market Share (%)', # Display institution's market share
-                     title=f"{inst_short_name}: markkinaosuus, koko tutkintomarkkina ({plot_reference_year})",
-                     caption=base_caption + " Laatikon koko kuvaa tutkinnon markkinakokoa.",
-                     filename=f"{inst_short_name}_treemap"
-                 )
-        except Exception as e:
-            logger.error(f"Failed to generate Treemap: {e}", exc_info=True)
-    else:
-        logger.warning("Skipping Treemap: Data not available.")
+    #         # Check required columns exist before plotting
+    #         required_cols = ['Market Total', 'Qualification', 'Market Share (%)']
+    #         if not plot_data.empty and all(col in plot_data.columns for col in required_cols) and not plot_data[required_cols].isnull().any().any():
+    #              visualizer.create_treemap(
+    #                  data=plot_data,
+    #                  value_col='Market Total', # Use adjusted value
+    #                  label_col='Qualification',
+    #                  detail_col='Market Share (%)', # Display institution's market share
+    #                  title=f"{inst_short_name}: markkinaosuus, koko tutkintomarkkina ({plot_reference_year})",
+    #                  caption=base_caption + " Laatikon koko kuvaa tutkinnon markkinakokoa.",
+    #                  filename=f"{inst_short_name}_treemap"
+    #              )
+    #     except Exception as e:
+    #         logger.error(f"Failed to generate Treemap: {e}", exc_info=True)
+    # else:
+    #     logger.warning("Skipping Treemap: Data not available.")
 
     logger.info("...visualization generation complete.")
 

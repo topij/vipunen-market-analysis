@@ -104,29 +104,33 @@ A typical Excel export contains:
 2. **Volumes by Qualification** worksheet:
    - Year
    - Qualification
-   - Provider Volume
-   - Subcontractor Volume
-   - Total Volume
+   - Provider Amount
+   - Subcontractor Amount
+   - Total Amount
+   - Market Total
+   - Market Share (%)
 
 3. **Provider's Market** worksheet:
-   - Qualification
    - Year
-   - Total Market Volume
-   - Institution's Volume
+   - Qualification
+   - Provider
+   - Provider Amount
+   - Subcontractor Amount
+   - Total Volume (Provider's total volume)
+   - Market Total (Qualification's total volume)
    - Market Share (%)
    - Market Rank
-   - YoY Growth (%)
-   - Growth Trend
+   - Market Share Growth (%)
+   - Market Gainer Rank
 
 4. **CAGR Analysis** worksheet:
    - Qualification
+   - CAGR (%)
    - First Year
    - Last Year
-   - Start Volume
-   - End Volume
-   - Years in Market
-   - CAGR (%)
-   - Growth Status
+   - First Year Volume
+   - Last Year Volume
+   - Years Present
 
 ## Export File Path Structure
 

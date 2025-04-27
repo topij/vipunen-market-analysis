@@ -21,34 +21,29 @@ def calculate_cagr_for_groups(df: pd.DataFrame,
                          qual_type_column: Optional[str] = None,
                          year_column: str = None) -> pd.DataFrame:
     """
-    Calculate the Compound Annual Growth Rate (CAGR) for each group in a DataFrame.
-    
+    Calculate Compound Annual Growth Rate (CAGR) for specified groups within a DataFrame.
+
+    Handles cases with zero start/end values and calculates CAGR based on the first and
+    last year present for each group.
+
     Args:
-        df: DataFrame containing the data with a year column
-        groupby_columns: List of column names to group the DataFrame by
-        value_column: Name of column containing values for CAGR calculation
-            If this is a year-specific column like "2022_yhteensä", the function will
-            look for corresponding first year column.
-        last_year: Optional last year to include in the CAGR calculation
-        qual_type_column: Optional column name for qualification type information
-        year_column: Column name containing year information. If None, will try
-                    'tilastovuosi' and 'Year' in that order.
-    
+        df (pd.DataFrame): Input DataFrame containing the data.
+        groupby_columns (List[str]): List of column names to group by.
+        value_column (str): Column containing the values for CAGR calculation.
+        last_year (Optional[int]): If provided, calculates CAGR up to this year.
+        qual_type_column (Optional[str]): Optional column containing qualification type information.
+        year_column (str): Column name containing the year information.
+
     Returns:
-        DataFrame containing calculated CAGR for each group, with columns:
-        - tutkinto (or first groupby column)
-        - CAGR
-        - First Year
-        - Last Year
-        - First Year Volume
-        - Last Year Volume
-        - Years Present
-        - Qualification Type (if qual_type_column is provided)
-    
-    Notes:
-        - Handles cases where start or end value is zero
-        - Infinite growth represented by np.inf
-        - Decline to zero represented by -np.inf
+        pd.DataFrame: DataFrame with CAGR results for each group. Contains:
+            - Columns specified in `groupby_columns` (using their original names).
+            - 'CAGR': Calculated Compound Annual Growth Rate (%).
+            - 'First Year': The first year data was present for the group.
+            - 'Last Year': The last year data was present for the group.
+            - 'First Year Volume': The volume in the first year.
+            - 'Last Year Volume': The volume in the last year.
+            - 'Years Present': The number of distinct years with data for the group.
+            - 'Qualification Type' (optional): If `qual_type_column` was provided.
     """
     # Initialize an empty list for CAGR DataFrames
     cagr_list = []

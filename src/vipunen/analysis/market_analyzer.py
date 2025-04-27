@@ -289,12 +289,14 @@ class MarketAnalyzer:
     
     def calculate_providers_market(self) -> pd.DataFrame:
         """
-        Calculate the detailed provider market data as expected for the 'Provider\'s Market' sheet.
+        Calculate the detailed provider market data as expected for the 'Provider's Market' sheet.
         This includes market shares and ranks for all providers within qualifications
         relevant to the target institution, across all years.
 
         Returns:
-            DataFrame matching the structure defined in docs/export_file_structure.txt
+            DataFrame matching the structure defined in docs/export_file_structure.txt:
+            Year | Qualification | Provider | Provider Amount | Subcontractor Amount | Total Volume | 
+            Market Total | Market Share (%) | Market Rank | Market Share Growth (%) | Market Gainer Rank
         """
         if self.data.empty or not self.institution_names or self.min_year is None or self.max_year is None:
             logger.warning("Cannot calculate provider's market: missing data or institution names.")
@@ -458,7 +460,10 @@ class MarketAnalyzer:
         Calculate Compound Annual Growth Rate (CAGR) for qualifications offered by the target institution.
         
         Returns:
-            DataFrame with qualification CAGRs, sorted by qualification name
+            DataFrame with qualification CAGRs, sorted by qualification name.
+            Columns match the 'CAGR Analysis' section in docs/export_file_structure.txt, 
+            with the grouping column named 'Qualification'.
+            Columns: Qualification | CAGR | First Year | Last Year | First Year Volume | Last Year Volume | Years Present
         """
         # Return empty DataFrame if no data or institution
         if self.data.empty or not self.institution_names or self.min_year is None or self.max_year is None:

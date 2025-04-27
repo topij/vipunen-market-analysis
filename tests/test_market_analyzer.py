@@ -287,7 +287,7 @@ def test_calculate_qualification_cagr(market_analyzer):
 
 def test_get_all_results(market_analyzer):
     """Test getting all analysis results."""
-    results = market_analyzer.get_all_results()
+    results = market_analyzer.analyze()
     
     # Check that the result is a dictionary
     assert isinstance(results, dict)
@@ -296,15 +296,17 @@ def test_get_all_results(market_analyzer):
     expected_keys = [
         'total_volumes',
         'volumes_by_qualification',
-        "provider's_market",
-        'cagr_analysis'
+        'detailed_providers_market',
+        'qualification_cagr',
+        'overall_total_market_volume',
+        'qualification_market_yoy_growth'
     ]
     for key in expected_keys:
         assert key in results
     
-    # Check that all values are DataFrames
+    # Check that all values are DataFrames or Series
     for key, value in results.items():
-        assert isinstance(value, pd.DataFrame)
+        assert isinstance(value, (pd.DataFrame, pd.Series))
 
 
 def test_empty_data():
@@ -333,9 +335,9 @@ def test_empty_data():
     assert analyzer.calculate_qualification_cagr().empty
     
     # Check that get_all_results returns a dict with empty DataFrames
-    results = analyzer.get_all_results()
+    results = analyzer.analyze()
     for key, value in results.items():
-        assert value.empty
+        assert value.empty # Correct assertion for empty results
 
 
 def test_data_with_single_year():
@@ -372,15 +374,18 @@ def test_data_with_single_year():
     # Check that get_all_results returns a dict with appropriate empty/non-empty DataFrames
     # Set institution names first
     analyzer.institution_names = ['Provider X']
-    results = analyzer.get_all_results()
+    results = analyzer.analyze()
     assert not results['total_volumes'].empty
     assert not results['volumes_by_qualification'].empty
-    assert not results["provider's_market"].empty # Should have data for the single year
-    assert results['cagr_analysis'].empty # CAGR needs multiple years 
+    assert not results["detailed_providers_market"].empty # Updated key, should have data for the single year
+    assert results["qualification_cagr"].empty
+    assert not results["overall_total_market_volume"].empty
+    # For single year data, YoY growth is not applicable, should be empty
+    assert results["qualification_market_yoy_growth"].empty
 
 
 def test_calculate_providers_market(market_analyzer):
-    """Test the new calculate_providers_market method."""
+    """Test calculation of detailed provider market data."""
     market_analyzer.institution_names = ['Provider X']
     market_analyzer.institution_short_name = "PX"
 

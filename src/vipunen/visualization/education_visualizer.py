@@ -261,8 +261,8 @@ class EducationVisualizer:
         Create a line chart for time series comparisons
         
         Args:
-            data: DataFrame containing the data
-            x_col: Column name for x-axis (time)
+            data: DataFrame containing the data (Index=time/category, Columns=series)
+            x_col: Index or column name for x-axis (time/category). If passing index, use data.index.
             y_cols: List of column names for y values
             colors: List of colors for each line
             labels: List of labels for each line
@@ -276,10 +276,13 @@ class EducationVisualizer:
             fig, ax: Matplotlib figure and axis objects
         """
         fig, ax = plt.subplots(figsize=figsize)
-        
-        # Convert x values to strings for categorical display if needed
-        x_values = data[x_col] if pd.api.types.is_numeric_dtype(data[x_col]) else data[x_col].astype(str)
-        
+
+        # Use index if x_col is the index, otherwise use the column
+        if isinstance(x_col, pd.Index):
+            x_values = x_col.astype(str) # Assume index needs string conversion for plotting
+        else:
+            x_values = data[x_col] if pd.api.types.is_numeric_dtype(data[x_col]) else data[x_col].astype(str)
+
         # Line styles for differentiation
         line_styles = ['-', '--', ':', '-.']
         marker_styles = ['o', 's', '^', 'D', 'v']
@@ -569,11 +572,11 @@ class EducationVisualizer:
         Create a treemap visualization
 
         Args:
-            data: DataFrame containing the data
-            value_col: Column name for size values (e.g., total market volume)
-            label_col: Column name for segment labels (e.g., qualification name)
-            detail_col: Column name for the detail value to display inside segments (e.g., market share %)
-            title: Title for the chart
+            data: DataFrame containing the data, sorted appropriately for layout stability.
+            value_col: Column name for size values (e.g., total market volume).
+            label_col: Column name for segment labels (e.g., qualification name).
+            detail_col: Column name for the detail value to display inside segments (e.g., market share %).
+            title: Title for the chart.
             caption: Optional caption
             filename: Optional filename to save the visualization
             figsize: Figure size tuple
@@ -589,42 +592,48 @@ class EducationVisualizer:
         labels = data[label_col].values
         details = data[detail_col].values if detail_col and detail_col in data.columns else sizes # Use size if no detail
 
-        # Normalize sizes for plotting
+        # Normalize sizes for plotting layout (0-100 range often used)
         norm_sizes = squarify.normalize_sizes(sizes, dx=100, dy=100)
+
+        # Compute rectangle coordinates using squarify
+        # Width (dx) and height (dy) of the plotting area
+        plot_width = 100
+        plot_height = 100
+        rects_coords = squarify.squarify(norm_sizes, 0, 0, plot_width, plot_height)
 
         # Use palette colors in sequence
         colors = [COLOR_PALETTES["main"][i % len(COLOR_PALETTES["main"])]
                  for i in range(len(sizes))]
 
-        # Create treemap rectangles
-        rects = squarify.plot(
-            sizes=norm_sizes,
-            color=colors,
-            alpha=0.8,
-            edgecolor="white",
-            linewidth=1,
-            ax=ax,
-            label=None # Labels will be added manually
-        )
+        # Create the plot
+        # fig, ax = plt.subplots(figsize=figsize) # Already created
+        ax.set_xlim(0, plot_width)
+        ax.set_ylim(0, plot_height)
 
-        # Add text labels inside rectangles
-        for i, rect in enumerate(rects):
-            x, y, dx, dy = rect['x'], rect['y'], rect['dx'], rect['dy']
+        # Draw rectangles and add labels
+        for i, rect_info in enumerate(rects_coords):
+            x, y, dx, dy = rect_info['x'], rect_info['y'], rect_info['dx'], rect_info['dy']
+            color = colors[i % len(colors)]
+
+            # Draw rectangle
+            ax.add_patch(plt.Rectangle((x, y), dx, dy, facecolor=color, edgecolor='white', linewidth=1))
+
+            # Prepare label text
             label_text = self._wrap_text(labels[i], wrap_width)
             detail_val = details[i]
             # Format detail as percentage if name suggests it, otherwise float
-            detail_fmt = "({:.1f}%)" if ('%' in detail_col if detail_col else False) else "({:.1f})"
+            detail_fmt = "({:.1f}%)" if (detail_col and '%' in detail_col) else "({:.1f})"
             full_label = f"{label_text}\n{detail_fmt.format(detail_val)}"
 
-            # Determine text color based on background lightness (simple heuristic)
-            bg_color = colors[i % len(colors)]
-            r, g, b, _ = to_rgba(bg_color)
-            luminance = 0.299*r + 0.587*g + 0.114*b # Calculate perceived luminance
+            # Determine text color based on background lightness
+            r, g, b, _ = to_rgba(color)
+            luminance = 0.299*r + 0.587*g + 0.114*b
             text_color = 'white' if luminance < 0.5 else 'black'
 
-            # Adjust font size based on rectangle size (heuristic)
+            # Adjust font size based on rectangle size
             fontsize = max(6, min(10, int(np.sqrt(dx * dy) / 1.5)))
 
+            # Add text
             ax.text(x + dx / 2, y + dy / 2, full_label,
                     horizontalalignment='center', verticalalignment='center',
                     fontsize=fontsize, color=text_color, wrap=True)

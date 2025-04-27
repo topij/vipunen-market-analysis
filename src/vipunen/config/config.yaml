@@ -26,11 +26,9 @@ columns:
 # Institution information
 institutions:
   default:
-    name: "Rastor-instituutti"
+    name: "Rastor-instituutti ry"
     short_name: "RI"
     variants:
-      - "Rastor-instituutti ry"
-      - "Rastor-instituutti"
       - "RASTOR OY"
       - "Rastor Oy"
 
@@ -38,6 +36,7 @@ institutions:
 qualification_types:
   - "Ammattitutkinnot"
   - "Erikoisammattitutkinnot"
+  - "Perustutkinnot"
 
 # File paths
 paths:

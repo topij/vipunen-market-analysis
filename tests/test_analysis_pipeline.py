@@ -119,8 +119,8 @@ def test_run_analysis_with_default_args(mock_dependencies):
     
     # Verify that results contain all expected keys
     expected_keys = [
-        'total_volumes', 'volumes_by_qualification', "provider's_market",
-        "cagr_analysis", 'excel_path'
+        'total_volumes', 'volumes_by_qualification', "detailed_providers_market",
+        "qualification_cagr", 'excel_path'
     ]
     for key in expected_keys:
         assert key in results, f"Missing result key: {key}"
@@ -183,8 +183,8 @@ def test_run_analysis_error_handling(mock_dependencies):
         
         # Verify that empty DataFrame are returned for all data keys
         data_keys = [
-            'total_volumes', 'volumes_by_qualification', "provider's_market",
-            "cagr_analysis"
+            'total_volumes', 'volumes_by_qualification', "detailed_providers_market",
+            "qualification_cagr"
         ]
         for key in data_keys:
             assert key in results

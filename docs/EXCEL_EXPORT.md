@@ -80,57 +80,64 @@ def export_to_excel(data_dict, file_name, output_type="reports", **kwargs):
 
 ## Standard Excel Worksheets
 
-The standard Excel export includes the following worksheets:
+The standard Excel export, generated using the results from `MarketAnalyzer.analyze()`, includes the following worksheets:
 
-| Worksheet Name | Content |
-|----------------|---------|
-| **Total Volumes** | Institution's total volumes by year, broken down by provider vs. subcontractor roles |
-| **Volumes by Qualification** | Student volumes for each qualification by year |
-| **Provider's Market** | Comprehensive market data including market share and growth for each qualification |
-| **CAGR Analysis** | Detailed qualification history with first/last years and growth rates |
-| **Institution Roles** | Analysis of institution's roles as main provider and subcontractor |
+| Worksheet Name             | Content                                                                                                   | Filtering Applied (based on `analyze()` logic) |
+| :------------------------- | :-------------------------------------------------------------------------------------------------------- | :--------------------------------------------- |
+| **Total Volumes**          | Institution's total volumes by year, broken down by provider vs. subcontractor roles.                       | None                                           |
+| **Volumes by Qualification** | Student volumes for the target institution for each qualification by year.                                  | None (shows all qualifications institution participated in) |
+| **Detailed Provider Market** | Comprehensive market data (shares, ranks, volumes) for **all providers** across **all years** for qualifications relevant to the target institution. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
+| **CAGR Analysis**          | Detailed qualification history based *only* on the target institution's volumes, including CAGR calculation. | None (shows all qualifications institution ever offered with sufficient data) |
+| **Qual Market YoY Growth** | Year-over-Year growth (%) of the *total market size* for each qualification.                              | **Filtered** to exclude qualifications identified in `analyze()` as low volume OR inactive for the target institution. |
+| *(Other sheets like `market_shares` or `overall_total_market_volume` may also be present depending on the `analyze()` results)* |
 
 ## Example Output Structure
 
 A typical Excel export contains:
 
-1. **Total Volumes** worksheet:
-   - Year
-   - Total Volume
-   - Volume as Provider
-   - Volume as Subcontractor
-   - Year-over-Year Growth
+1.  **Total Volumes** worksheet:
+    *   Year
+    *   Total Volume
+    *   Volume as Provider
+    *   Volume as Subcontractor
+    *   Year-over-Year Growth
 
-2. **Volumes by Qualification** worksheet:
-   - Year
-   - Qualification
-   - Provider Amount
-   - Subcontractor Amount
-   - Total Amount
-   - Market Total
-   - Market Share (%)
+2.  **Volumes by Qualification** worksheet:
+    *   Year
+    *   Qualification
+    *   Provider Amount
+    *   Subcontractor Amount
+    *   Total Amount
+    *   Market Total
+    *   Market Share (%)
 
-3. **Provider's Market** worksheet:
-   - Year
-   - Qualification
-   - Provider
-   - Provider Amount
-   - Subcontractor Amount
-   - Total Volume (Provider's total volume)
-   - Market Total (Qualification's total volume)
-   - Market Share (%)
-   - Market Rank
-   - Market Share Growth (%)
-   - Market Gainer Rank
+3.  **Detailed Provider Market** worksheet (Formerly 'Provider's Market'):
+    *   Year
+    *   Qualification
+    *   Provider
+    *   Provider Amount
+    *   Subcontractor Amount
+    *   Total Volume (Provider's total volume for that qual/year)
+    *   Market Total (Qualification's total market volume for that year)
+    *   Market Share (%)
+    *   Market Rank
+    *   Market Share Growth (%) (YoY change in provider's market share)
+    *   Market Gainer Rank
 
-4. **CAGR Analysis** worksheet:
-   - Qualification
-   - CAGR (%)
-   - First Year
-   - Last Year
-   - First Year Volume
-   - Last Year Volume
-   - Years Present
+4.  **CAGR Analysis** worksheet:
+    *   Qualification
+    *   CAGR (%)
+    *   First Year
+    *   Last Year
+    *   First Year Volume
+    *   Last Year Volume
+    *   Years Present
+
+5.  **Qual Market YoY Growth** worksheet:
+    *   Qualification
+    *   Year
+    *   Market Total
+    *   Market Total YoY Growth (%) (YoY growth of the total market for the qualification)
 
 ## Export File Path Structure
 

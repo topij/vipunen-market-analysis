@@ -1,57 +1,40 @@
 # Visualization Features
 
-This document provides a brief overview of the visualization capabilities in the Vipunen project. Note that visualization features are still being upgraded in the current version.
+This document provides a brief overview of the visualization capabilities provided by the `EducationVisualizer` class in the Vipunen project.
 
-## Available Visualization Modules
+## `EducationVisualizer` Class
 
-The Vipunen project includes three main visualization modules:
+The `src/vipunen/visualization/education_visualizer.py` module contains the `EducationVisualizer` class, which offers methods to create various standard plots based on the analysis results from `MarketAnalyzer`.
 
-1. **Volume Plots** (`src/vipunen/visualization/volume_plots.py`): Visualizations for student volume data
-2. **Market Plots** (`src/vipunen/visualization/market_plots.py`): Visualizations for market share analysis
-3. **Growth Plots** (`src/vipunen/visualization/growth_plots.py`): Visualizations for growth trends and time series
+The CLI script (`src/vipunen/cli/analyze_cli.py`) uses this class in its `generate_visualizations` function to automatically create a suite of plots.
 
-## Basic Usage
+## Key Visualization Methods in `EducationVisualizer`
 
-Visualization functions can be imported directly and used with analyzed data:
+| Method Name                       | Description                                                                          | Key Customizations/Notes                                                                                                |
+| :-------------------------------- | :----------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
+| `create_area_chart`               | Stacked area chart showing total volume breakdown (e.g., Provider vs Subcontractor). | Colors, labels configurable.                                                                                            |
+| `create_line_chart`               | Line chart comparing market share evolution over time for different providers.       | Generated for **all** active qualifications (not just top N). Shows top 6 providers per qualification by default.        |
+| `create_heatmap`                  | Heatmap showing the target institution's market share across qualifications and years. | Filtered to show only active qualifications for the institution.                                                      |
+| `create_heatmap_with_marginals` | Combines the institution share heatmap with marginal plots for total market volume.    | Filtered to show only active qualifications for the institution.                                                      |
+| `create_horizontal_bar_chart`   | Horizontal bar chart used for Qualification Growth and Provider Gainer/Loser plots.  | **Styling**: Labels appear to the right of bars; spines and horizontal grid removed; vertical line at 0 if needed.        |
+| `create_treemap`                  | Treemap visualizing market share vs. market size for the institution's qualifications. | (Currently commented out in `analyze_cli.py`)                                                                         |
 
-```python
-from src.vipunen.visualization.volume_plots import plot_total_volumes
-from src.vipunen.visualization.market_plots import plot_market_share_heatmap
-from src.vipunen.visualization.growth_plots import plot_qualification_growth
+## Visualization Generation in `analyze_cli.py`
 
-# Plot total volumes
-plot_total_volumes(
-    volumes_df=total_volumes,
-    institution_short_name="RI",
-    output_dir="reports/figures"
-)
+The `generate_visualizations` function in `analyze_cli.py` uses the results from `MarketAnalyzer.analyze()` and calls the appropriate `EducationVisualizer` methods.
 
-# Plot market share heatmap
-plot_market_share_heatmap(
-    market_shares_df=market_shares,
-    institution_name="Rastor-instituutti",
-    output_dir="reports/figures"
-)
-```
+**Key Points:**
 
-## Key Visualization Functions
-
-| Function | Module | Description |
-|----------|--------|-------------|
-| `plot_total_volumes` | volume_plots | Bar chart of total student volumes by year |
-| `plot_top_qualifications` | volume_plots | Bar chart of volumes for top qualifications |
-| `plot_market_share_heatmap` | market_plots | Heatmap of market shares across qualifications |
-| `plot_qualification_market_shares` | market_plots | Bar chart of market shares for specific qualifications |
-| `plot_qualification_growth` | growth_plots | Scatter plot of qualification growth rates |
-| `plot_qualification_time_series` | growth_plots | Line chart of qualification volumes over time |
+*   **Active Qualifications**: The function determines "active" qualifications based on the institution having a `Total Volume >= 1` in either of the last two relevant years (last full year or the one before). This list is used to filter the Heatmaps and select which qualifications get individual Line and Bar charts.
+*   **Qualification Scope**: Line charts (`create_line_chart`) and Gainer/Loser bar charts (`create_horizontal_bar_chart` for Plot 6) are generated for **all** identified active qualifications, providing a comprehensive view.
+*   **Data Source**: All plots use the potentially filtered data returned by `MarketAnalyzer.analyze()`, ensuring consistency (e.g., `detailed_providers_market` used for many plots already has zero-volume rows removed).
 
 ## Output Formats
 
-Visualizations are saved as PNG files by default in the specified output directory. The filenames include:
-- The institution name (or short name)
-- The type of visualization
-- A timestamp (optional)
+Visualizations are saved as PNG files by default in the specified output directory (e.g., `data/reports/[institution_short_name]/plots/`). Filenames typically include:
+- The institution short name
+- The type of visualization or qualification name
 
 ## Customization
 
-Note that visualization features in the current version have limited customization options. Future versions will include more extensive styling and customization capabilities. 
+Basic customization (titles, captions, colors) is handled within the `EducationVisualizer` methods. Further styling can be adjusted by modifying the methods in `education_visualizer.py` or potentially through matplotlib style sheets if configured. 

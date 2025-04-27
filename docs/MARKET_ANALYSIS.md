@@ -1,16 +1,108 @@
 # Market Analysis Features
 
-This document provides an overview of the market analysis features available in the Vipunen project. These features help educational institutions understand their position in the Finnish vocational education market.
+This document provides an overview of the market analysis features available in the Vipunen project, primarily through the `MarketAnalyzer` class. These features help educational institutions understand their position in the Finnish vocational education market.
 
 ## Core Analysis Capabilities
 
-The Vipunen project provides several core analysis capabilities:
+The `MarketAnalyzer` class provides several core analysis capabilities:
 
-1. **Volume Analysis**: Track student volumes across years and qualifications
-2. **Market Share Analysis**: Calculate market share percentages for providers in each qualification
-3. **Growth Analysis**: Identify growing and declining qualifications and markets
-4. **Compound Annual Growth Rate (CAGR)**: Calculate long-term growth rates for qualifications
-5. **Provider Ranking**: Identify top providers in each qualification market
+1.  **Volume Analysis**: Track overall student volumes and volumes per qualification for the target institution.
+2.  **Market Share Analysis**: Calculate market shares, growth, and rankings for all providers within qualifications relevant to the target institution (`detailed_providers_market`). It also provides a simplified year-over-year market share overview (`market_shares`).
+3.  **Growth Analysis**: Analyze year-over-year growth trends for the total market size of each qualification (`qualification_market_yoy_growth`).
+4.  **Compound Annual Growth Rate (CAGR)**: Calculate the long-term growth rate (CAGR) for qualifications based *only* on the target institution's historical volume (`qualification_cagr`).
+5.  **Filtering**: Identifies qualifications with very low total market volume or where the target institution has become inactive, allowing for selective filtering of results.
+
+## MarketAnalyzer Class
+
+The primary class for performing the analysis is `MarketAnalyzer` located in `src/vipunen/analysis/market_analyzer.py`.
+
+```python
+from src.vipunen.analysis.market_analyzer import MarketAnalyzer
+
+# Assuming 'processed_data' is the cleaned DataFrame
+analyzer = MarketAnalyzer(processed_data)
+
+# Set institution names (variants used for finding data)
+analyzer.institution_names = institution_variants 
+# Set the primary name (used for filtering checks and logging)
+analyzer.institution_short_name = institution_short_name 
+
+# Perform the analysis
+analysis_results = analyzer.analyze(min_market_size_threshold=5) 
+```
+
+### `analyze()` Method
+
+The main method is `analyze()`, which orchestrates all calculations and returns a dictionary of DataFrames.
+
+**Key Steps in `analyze()`:**
+
+1.  **Initial Calculations**: Calculates various metrics like total volumes, volumes by qualification, detailed provider market shares across all years, CAGR for the institution's qualifications, overall market volume per year, and year-over-year growth for qualification markets.
+2.  **Identify Qualifications for Exclusion**:
+    *   **Low Total Market Volume**: Identifies qualifications where the *total market volume* (across all providers) is below `min_market_size_threshold` in *both* the last full year and the current year.
+    *   **Institution Inactivity**: Identifies qualifications where the *target institution's total volume* (across all its name variants) was less than 1 (`< 1`) in *both* the last full year and the current year.
+3.  **Selective Filtering**:
+    *   The combined list of qualifications identified in step 2 (low volume OR inactive) is used to filter **only** the `qualification_market_yoy_growth` results. This focuses growth trend analysis on more relevant qualifications.
+    *   The `detailed_providers_market` DataFrame is **not** filtered based on the combined list, preserving the historical view of all qualifications the institution participated in. However, individual rows where a provider's `Total Volume` is exactly 0 *are* removed from this specific DataFrame to clean the output.
+    *   The `volumes_by_qualification` and `qualification_cagr` DataFrames remain **unfiltered** by the low volume/inactivity criteria, providing a complete historical perspective for the institution.
+4.  **Return Results**: Returns a dictionary containing all calculated DataFrames (some filtered, some not).
+
+### Output DataFrames from `analyze()`
+
+| Key in Results Dictionary       | Description                                                                                                | Filtering Applied by `analyze()`                                  |
+| :------------------------------ | :--------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
+| `total_volumes`                 | Total student volumes (provider + subcontractor) for the target institution by year.                         | None                                                              |
+| `volumes_by_qualification`      | Student volumes for the target institution, broken down by qualification and year.                           | None (by low volume/inactivity criteria)                          |
+| `market_shares`                 | Simplified Year-over-Year market share comparison for all providers (based on the two most recent years).  | None                                                              |
+| `detailed_providers_market`     | Detailed market shares, volumes, ranks for **all providers** within qualifications relevant to the target institution, across **all years**. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
+| `qualification_cagr`            | Compound Annual Growth Rate for qualifications based *only* on the target institution's historical volumes.    | None                                                              |
+| `overall_total_market_volume`   | Series showing the total market volume across all providers/qualifications for each year.                    | None                                                              |
+| `qualification_market_yoy_growth` | Year-over-Year growth (%) of the *total market size* for each qualification.                               | **Filtered** to exclude qualifications identified as low volume OR inactive for the target institution. |
+
+*(Note: The underlying calculation methods like `calculate_providers_market` inherently focus on qualifications relevant to the target institution based on the input data provided to the `MarketAnalyzer`.)*
+
+## Analysis Workflow Example (using `analyze_cli.py`)
+
+The `src/vipunen/cli/analyze_cli.py` script orchestrates the typical workflow:
+
+1.  **Load Configuration**: Reads `config/config.yaml` (or specified file).
+2.  **Load and Prepare Data**: Uses `data_loader` and `data_processor`.
+3.  **Initialize `MarketAnalyzer`**: Passes cleaned data and sets `institution_names` and `institution_short_name` from config.
+4.  **Run Analysis**: Calls `analyzer.analyze(min_market_size_threshold=...)`.
+5.  **Export to Excel**: Uses `export_to_excel` to save the results dictionary from `analyze()` into different sheets.
+6.  **Generate Visualizations**: Uses `EducationVisualizer` with the results from `analyze()` to create plots.
+
+```python
+# Simplified flow from analyze_cli.py
+
+# ... load config, load data, prepare data ...
+
+# Initialize analyzer
+analyzer = MarketAnalyzer(processed_data)
+analyzer.institution_names = institution_variants 
+analyzer.institution_short_name = institution_short_name 
+
+# Run analysis
+min_market_size = config.get('analysis', {}).get('min_market_size_threshold', 5)
+analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size)
+
+# Export results
+excel_data = {
+    "Total Volumes": analysis_results.get('total_volumes'),
+    # ... map other results ...
+    "Detailed Provider Market": analysis_results.get("detailed_providers_market"),
+    "CAGR Analysis": analysis_results.get('qualification_cagr'),
+    "Qual Market YoY Growth": analysis_results.get('qualification_market_yoy_growth') 
+}
+# ... call export_to_excel ...
+
+# Generate visualizations
+visualizer = EducationVisualizer(...)
+generate_visualizations(analysis_results, visualizer, analyzer, config)
+
+```
+
+This revised structure centralizes the analysis logic within `MarketAnalyzer.analyze`, providing consistent and selectively filtered results for downstream use in exports and visualizations.
 
 ## EducationMarketAnalyzer
 

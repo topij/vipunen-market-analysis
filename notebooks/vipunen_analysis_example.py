@@ -15,9 +15,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import logging
 from pathlib import Path
-
+import sys
 # Configure matplotlib
-plt.style.use('seaborn-whitegrid')
+# plt.style.use('seaborn-whitegrid')
 plt.rcParams['figure.figsize'] = (12, 8)
 
 # Configure logging
@@ -26,6 +26,11 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Add project root to path (for local environment)
+project_root = str(Path().resolve().parent)
+if project_root not in sys.path:
+    sys.path.append(project_root)
 
 # %% [markdown]
 # Import Vipunen-specific modules:
@@ -75,14 +80,16 @@ figures_dir.mkdir(parents=True, exist_ok=True)
 # Here we load the data, either using the dummy data generator or from a file.
 
 # %%
+
 if use_dummy_data:
     # Generate dummy data for demonstration purposes
     raw_data = create_dummy_dataset(
-        num_years=5,
-        num_qualifications=20,
-        num_providers=15,
+        # num_years=5,
+        qualification_count=20,
+        provider_count=15,
         start_year=2018,
-        provider_name=institution_name
+        end_year=2024,
+        # provider_name=institution_name
     )
     logger.info(f"Generated dummy dataset with {len(raw_data)} rows")
 else:

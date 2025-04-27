@@ -4,7 +4,7 @@ Tests for the market_share_analyzer module.
 import pytest
 import pandas as pd
 import numpy as np
-from src.vipunen.analysis.market_share_analyzer import (
+from vipunen.analysis.market_share_analyzer import (
     calculate_market_shares,
     calculate_market_share_changes,
     calculate_total_volumes
@@ -13,71 +13,58 @@ from src.vipunen.analysis.market_share_analyzer import (
 
 def test_calculate_market_shares(sample_market_data):
     """Test the calculate_market_shares function."""
-    # Test with a single provider name
-    provider_names = ['Provider X']
-    result = calculate_market_shares(sample_market_data, provider_names)
+    # --- Test with default ('both') calculation basis ---
+    provider_names_both = ['Provider X', 'Provider Y']
+    result_both = calculate_market_shares(sample_market_data, provider_names_both, share_calculation_basis='both')
     
-    # Check that the result is a DataFrame
-    assert isinstance(result, pd.DataFrame)
-    
-    # Check that required columns are present
+    # Check basic properties with 'both'
+    assert isinstance(result_both, pd.DataFrame)
     required_columns = [
         'tilastovuosi', 'tutkinto', 'provider', 'volume_as_provider',
         'volume_as_subcontractor', 'total_volume', 'qualification_market_volume',
         'market_share', 'provider_count', 'subcontractor_count', 'is_target_provider'
     ]
-    assert all(col in result.columns for col in required_columns)
+    assert all(col in result_both.columns for col in required_columns)
+    assert len(result_both) > 0
     
-    # Check that 'is_target_provider' is correctly set
-    provider_x_rows = result[result['provider'] == 'Provider X']
-    assert all(provider_x_rows['is_target_provider'])
+    # Verify double counting occurs with 'both' for the specific case
+    tut_a_2020_both = result_both[ (result_both['tilastovuosi'] == 2020) & (result_both['tutkinto'] == 'Tutkinto A') ]
+    assert tut_a_2020_both['market_share'].sum() > 100 # Expect sum > 100 due to double counting
+
+    # Check Provider X volumes (should reflect both roles)
+    provider_x_2020_a_both = tut_a_2020_both[tut_a_2020_both['provider'] == 'Provider X'].iloc[0]
+    assert provider_x_2020_a_both['volume_as_provider'] == 100
+    assert provider_x_2020_a_both['volume_as_subcontractor'] > 0
+    assert provider_x_2020_a_both['total_volume'] == provider_x_2020_a_both['volume_as_provider'] + provider_x_2020_a_both['volume_as_subcontractor']
     
-    provider_y_rows = result[result['provider'] == 'Provider Y']
-    assert not any(provider_y_rows['is_target_provider'])
+    # --- Test with 'main_provider' calculation basis ---
+    provider_names_main = ['Provider X', 'Provider Y']
+    result_main = calculate_market_shares(sample_market_data, provider_names_main, share_calculation_basis='main_provider')
     
-    # Test with multiple provider names
-    provider_names = ['Provider X', 'Provider Y']
-    result = calculate_market_shares(sample_market_data, provider_names)
+    # Check that required columns are still present
+    assert all(col in result_main.columns for col in required_columns)
     
-    # Check that 'is_target_provider' is correctly set for both providers
-    provider_x_rows = result[result['provider'] == 'Provider X']
-    assert all(provider_x_rows['is_target_provider'])
-    
-    provider_y_rows = result[result['provider'] == 'Provider Y']
-    assert all(provider_y_rows['is_target_provider'])
-    
-    provider_z_rows = result[result['provider'] == 'Provider Z']
-    assert not any(provider_z_rows['is_target_provider'])
-    
-    # Test with custom column names
-    result = calculate_market_shares(
-        sample_market_data,
-        provider_names,
-        year_col='tilastovuosi',
-        qual_col='tutkinto',
-        provider_col='koulutuksenJarjestaja',
-        subcontractor_col='hankintakoulutuksenJarjestaja',
-        value_col='nettoopiskelijamaaraLkm'
-    )
-    
-    # Check that the result has the expected shape
-    assert len(result) > 0
-    
-    # Check that market shares sum to 100% for each qualification and year
-    for (year, qual), group in result.groupby(['tilastovuosi', 'tutkinto']):
+    # Check that 'is_target_provider' is correctly set for the main provider analysis
+    provider_x_rows_main = result_main[result_main['provider'] == 'Provider X']
+    assert all(provider_x_rows_main['is_target_provider'])
+    provider_y_rows_main = result_main[result_main['provider'] == 'Provider Y']
+    assert all(provider_y_rows_main['is_target_provider'])
+    provider_z_rows_main = result_main[result_main['provider'] == 'Provider Z']
+    assert not any(provider_z_rows_main['is_target_provider'])
+
+    # Check that market shares sum to 100% when using 'main_provider' basis
+    for (year, qual), group in result_main.groupby(['tilastovuosi', 'tutkinto']):
         total_market_share = group['market_share'].sum()
-        assert abs(total_market_share - 100) < 0.01, f"Market shares don't sum to 100% for {year}, {qual}"
-    
-    # Check that Provider X's volume includes their role as both provider and subcontractor
-    provider_x_2020_a = result[
-        (result['provider'] == 'Provider X') &
-        (result['tilastovuosi'] == 2020) &
-        (result['tutkinto'] == 'Tutkinto A')
+        assert abs(total_market_share - 100) < 0.01, f"Market shares (main_provider) don't sum to 100% for {year}, {qual}"
+
+    # Check Provider X market share (based only on main provider volume)
+    provider_x_2020_a_main = result_main[
+        (result_main['provider'] == 'Provider X') &
+        (result_main['tilastovuosi'] == 2020) &
+        (result_main['tutkinto'] == 'Tutkinto A')
     ].iloc[0]
-    
-    # In the sample data, Provider X has 100 as provider and should have some as subcontractor
-    assert provider_x_2020_a['volume_as_provider'] == 100
-    assert provider_x_2020_a['volume_as_subcontractor'] > 0
+    expected_share_main = (provider_x_2020_a_main['volume_as_provider'] / provider_x_2020_a_main['qualification_market_volume']) * 100
+    assert abs(provider_x_2020_a_main['market_share'] - expected_share_main) < 0.01
 
 
 def test_calculate_market_share_changes(sample_market_data):

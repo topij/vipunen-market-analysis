@@ -36,7 +36,8 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     # Parse arguments if not provided
     if args is None:
-        parsed_args = parse_arguments()
+        # Pass empty list to prevent parsing pytest args from sys.argv
+        parsed_args = parse_arguments([]) 
         args = vars(parsed_args)
     
     # Step 1: Get configuration
@@ -98,75 +99,84 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             df_clean = df_clean[df_clean['tutkintotyyppi'].isin(qual_types)]
             logger.info(f"Filtered to qualification types: {qual_types}")
     
-    # Step 5: Perform analysis using the MarketAnalyzer
-    logger.info("Initializing market analyzer")
-    analyzer = MarketAnalyzer(
-        data=df_clean
-    )
-    
-    # Add institution names as an attribute to be used by the analyzer
-    analyzer.institution_names = institution_variants
-    analyzer.institution_short_name = institution_short_name
-    
-    # Run the analysis
-    logger.info("Running analysis")
-    analysis_results = analyzer.analyze()
-    
-    # Extract results
-    total_volumes = analysis_results.get('total_volumes', pd.DataFrame())
-    volumes_by_qual = analysis_results.get('volumes_by_qualification', pd.DataFrame())
-    market_shares = analysis_results.get("provider's_market", pd.DataFrame())
-    qualification_cagr = analysis_results.get('cagr_analysis', pd.DataFrame())
-    
-    # Set the kouluttaja column for compatibility with the original implementation
-    if not total_volumes.empty and 'kouluttaja' not in total_volumes.columns:
-        total_volumes['kouluttaja'] = institution_short_name
-    
-    # Step 6: Create directory structure for outputs
-    logger.info("Creating output directories")
-    
-    # Determine output directory
-    output_dir = args.get('output_dir')
-    if output_dir is None:
-        output_dir = config['paths'].get('output', 'data/reports')
+    # --- Start Analysis Block with Error Handling ---
+    analysis_results = {}
+    excel_path = None
+    try:
+        # Step 5: Perform analysis using the MarketAnalyzer
+        logger.info("Initializing market analyzer")
+        analyzer = MarketAnalyzer(
+            data=df_clean
+        )
         
-    # Create directory name based on institution
-    dir_name = f"education_market_{institution_short_name.lower()}"
-    output_dir = Path(output_dir) / dir_name
-    
-    # Create directory
-    output_dir.mkdir(exist_ok=True, parents=True)
-    
-    # Create plots directory
-    plots_dir = output_dir / "plots"
-    plots_dir.mkdir(exist_ok=True)
-    
-    # Step 7: Export results to Excel
-    logger.info("Exporting results to Excel")
-    
-    # Prepare Excel data
-    excel_data = {
-        "Total Volumes": total_volumes.reset_index(drop=True) if not total_volumes.empty else pd.DataFrame(),
-        "Volumes by Qualification": volumes_by_qual.reset_index(drop=True) if not volumes_by_qual.empty else pd.DataFrame(),
-        "Provider's Market": market_shares.reset_index(drop=True) if not market_shares.empty else pd.DataFrame(),
-        "CAGR Analysis": qualification_cagr.reset_index(drop=True) if not qualification_cagr.empty else pd.DataFrame()
-    }
-    
-    # Export to Excel
-    excel_path = export_to_excel(
-        data_dict=excel_data,
-        file_name=f"{institution_short_name.lower()}_market_analysis",
-        output_dir=output_dir,
-        include_timestamp=True
-    )
-    
-    logger.info(f"Analysis complete!")
-    
+        # Add institution names as an attribute to be used by the analyzer
+        analyzer.institution_names = institution_variants
+        analyzer.institution_short_name = institution_short_name
+        
+        # Run the analysis
+        logger.info("Running analysis")
+        analysis_results = analyzer.analyze() # This calls get_all_results
+        
+        # Step 6: Create directory structure for outputs (only if analysis succeeds)
+        logger.info("Creating output directories")
+        
+        # Determine output directory
+        output_dir = args.get('output_dir')
+        if output_dir is None:
+            output_dir = config['paths'].get('output', 'data/reports')
+            
+        # Create directory name based on institution
+        dir_name = f"education_market_{institution_short_name.lower()}"
+        output_dir = Path(output_dir) / dir_name
+        
+        # Create directory
+        output_dir.mkdir(exist_ok=True, parents=True)
+        
+        # Create plots directory
+        plots_dir = output_dir / "plots"
+        plots_dir.mkdir(exist_ok=True)
+        
+        # Step 7: Export results to Excel (only if analysis succeeds)
+        logger.info("Exporting results to Excel")
+        
+        # Prepare Excel data using results from analyze()
+        excel_data = {
+            "Total Volumes": analysis_results.get('total_volumes', pd.DataFrame()).reset_index(drop=True),
+            "Volumes by Qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()).reset_index(drop=True),
+            "Provider's Market": analysis_results.get("provider's_market", pd.DataFrame()).reset_index(drop=True),
+            "CAGR Analysis": analysis_results.get('cagr_analysis', pd.DataFrame()).reset_index(drop=True)
+        }
+        
+        # Export to Excel
+        excel_path = export_to_excel(
+            data_dict=excel_data,
+            file_name=f"{institution_short_name.lower()}_market_analysis",
+            output_dir=output_dir,
+            include_timestamp=True
+        )
+        
+        logger.info(f"Analysis complete!")
+        
+    except Exception as e:
+        logger.error(f"Error during analysis execution: {e}", exc_info=True)
+        # Ensure default empty results are available in case of error
+        analysis_results = {
+            "total_volumes": pd.DataFrame(),
+            "volumes_by_qualification": pd.DataFrame(),
+            "provider's_market": pd.DataFrame(),
+            "cagr_analysis": pd.DataFrame()
+        }
+        excel_path = None # No Excel file generated
+        # Note: We allow the function to return normally, but with empty results
+
+    # --- End Analysis Block ---
+
+    # Return results (potentially empty if error occurred)
     return {
-        "total_volumes": total_volumes,
-        "volumes_by_qualification": volumes_by_qual,
-        "provider's_market": market_shares,
-        "cagr_analysis": qualification_cagr,
+        "total_volumes": analysis_results.get('total_volumes', pd.DataFrame()),
+        "volumes_by_qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()),
+        "provider's_market": analysis_results.get("provider's_market", pd.DataFrame()),
+        "cagr_analysis": analysis_results.get('cagr_analysis', pd.DataFrame()),
         "excel_path": excel_path
     }
 

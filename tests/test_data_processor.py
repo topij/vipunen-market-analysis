@@ -4,7 +4,7 @@ Tests for the data_processor module.
 import pytest
 import pandas as pd
 import numpy as np
-from src.vipunen.data.data_processor import (
+from vipunen.data.data_processor import (
     clean_and_prepare_data,
     shorten_qualification_names,
     merge_qualification_variants,

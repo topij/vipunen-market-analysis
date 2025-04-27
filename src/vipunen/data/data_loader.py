@@ -53,11 +53,10 @@ def load_data(file_path: Optional[Union[str, Path]] = None, use_dummy: bool = Fa
         # Try with comma separator if semicolon fails
         try:
             return file_utils.load_single_file(file_name, input_type="raw", sep=',')
-        except (FileNotFoundError, StorageError) as e:
+        except Exception as e:
             logger.error(f"Could not find or load the data file at {file_path}: {e}")
-            logger.info("Creating a dummy dataset for demonstration purposes")
-            from .dummy_generator import create_dummy_dataset
-            return create_dummy_dataset()
+            # Return empty DataFrame on load failure
+            return pd.DataFrame()
 
 def ensure_data_directory(file_path: str) -> str:
     """

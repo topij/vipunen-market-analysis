@@ -7,7 +7,8 @@ import pandas as pd
 import numpy as np
 import logging
 from typing import List, Dict, Any, Optional, Union, Tuple
-from .qualification_analyzer import calculate_cagr_for_groups
+# Use the consolidated functions from qualification_analyzer
+from .qualification_analyzer import calculate_cagr_for_groups, calculate_yoy_growth, get_top_providers
 
 # Configure logging
 logging.basicConfig(
@@ -29,97 +30,26 @@ def sum_new_columns(df: pd.DataFrame, suffixes: List[str] = ['_as_jarjestaja', '
         Series containing the sum of the columns for each row
     """
     # Find columns ending with the suffixes
+    # Initialize col1 and col2 to avoid potential UnboundLocalError
+    col1, col2 = None, None
     for suffix in suffixes:
         for col in df.columns:
             if col.endswith(suffix):
                 original_col = col.replace(suffix, '')
                 col1 = original_col + suffixes[0]
                 col2 = original_col + suffixes[1]
-                
-    return (df[col1] + df[col2])
+                # Break inner loop once columns are identified for the current suffix
+                break  # Optimization: assumes consistent naming for a given original_col
 
-def calculate_yoy_growth(
-    df: pd.DataFrame, 
-    groupby_col: str, 
-    target_col: str, 
-    output_col: str, 
-    end_year: int, 
-    time_window: int, 
-    most_recent_complete_year: Optional[int] = None
-) -> pd.DataFrame:
-    """
-    Calculate Year-over-Year (YoY) growth for a specified target column.
-    
-    Args:
-        df: DataFrame containing the data
-        groupby_col: Column to group by (e.g., 'tutkinto')
-        target_col: Column containing values to calculate growth for
-        output_col: Name for the new column containing growth rates
-        end_year: The year for which to calculate growth
-        time_window: Number of years to consider for growth calculation
-        most_recent_complete_year: Optional most recent year with complete data
-    
-    Returns:
-        DataFrame containing YoY growth calculations
-    """
-    # Replace infinities and NaNs with 0
-    working_df = df.copy()
-    working_df[target_col] = working_df[target_col].replace([np.inf, -np.inf, np.nan], 0)
-    
-    # Calculate years range to include
-    years_list = [end_year - x for x in reversed(range(time_window))]
-    years_str = ", ".join(map(str, years_list))
-    
-    # Filter the DataFrame to only include the relevant years
-    filtered_df = working_df[working_df['tilastovuosi'].isin(years_list)]
-    
-    # Group by the specified column and calculate growth
-    if len(filtered_df) > 0:
-        # Group by the specified column and tilastovuosi, then sum the target column
-        grouped_df = filtered_df.groupby([groupby_col, 'tilastovuosi'])[target_col].sum().reset_index()
-        
-        # Pivot to have years as columns
-        pivot_df = grouped_df.pivot(index=groupby_col, columns='tilastovuosi', values=target_col)
-        
-        # Calculate growth percentage
-        if time_window > 1 and len(pivot_df.columns) >= 2:
-            start_year = years_list[0]
-            end_year = years_list[-1]
-            
-            # Calculate percentage change from start to end
-            if start_year in pivot_df.columns and end_year in pivot_df.columns:
-                # Handle zeros in the start column to avoid division by zero
-                pivot_df[output_col] = np.where(
-                    pivot_df[start_year] == 0,
-                    np.where(
-                        pivot_df[end_year] == 0,
-                        0,  # Both years are zero: 0% growth
-                        np.inf  # Start is zero, end is not: infinite growth
-                    ),
-                    (pivot_df[end_year] - pivot_df[start_year]) / pivot_df[start_year] * 100
-                )
-            else:
-                pivot_df[output_col] = np.nan
-                logger.warning(f"Missing year data for growth calculation: start_year={start_year}, end_year={end_year}")
-        else:
-            pivot_df[output_col] = np.nan
-            logger.warning(f"Insufficient time window or missing data for growth calculation")
-        
-        # Add trend column (growing or declining)
-        pivot_df[f'{output_col}_trendi'] = np.where(pivot_df[output_col] > 0, 'Kasvussa', 'Laskussa')
-        
-        # Add year information
-        pivot_df['tilastovuosi'] = end_year
-        pivot_df['tilastovuodet'] = years_str
-        
-        # Reset index and select only needed columns
-        result_df = pivot_df.reset_index()
-        return result_df[[groupby_col, output_col, f'{output_col}_trendi', 'tilastovuosi', 'tilastovuodet']]
+    if col1 is not None and col2 is not None and col1 in df.columns and col2 in df.columns:
+        return (df[col1] + df[col2])
     else:
-        # Return empty DataFrame with appropriate columns
-        return pd.DataFrame(columns=[groupby_col, output_col, f'{output_col}_trendi', 'tilastovuosi', 'tilastovuodet'])
+        # Handle case where columns were not found or are missing
+        logger.warning(f"Columns for summing with suffixes {suffixes} not found or incomplete.")
+        # Return a series of zeros or NaNs matching the DataFrame index length
+        return pd.Series(0, index=df.index)
 
-def hae_tutkinto_nom(df: pd.DataFrame, role: str, qualifications: List[str]) -> pd.DataFrame:
+def hae_tutkinto_nom(df: pd.DataFrame, role: str, qualifications: List[str], year_col: str = 'tilastovuosi', qual_col: str = 'tutkinto', volume_col: str = 'nettoopiskelijamaaraLkm') -> pd.DataFrame:
     """
     Get the yearly metrics for specific qualifications, filtered by a particular role.
     
@@ -127,19 +57,22 @@ def hae_tutkinto_nom(df: pd.DataFrame, role: str, qualifications: List[str]) -> 
         df: DataFrame containing the educational data
         role: Role of the institution (either 'koulutuksenJarjestaja' or 'hankintakoulutuksenJarjestaja')
         qualifications: List of qualifications to focus on
+        year_col: Name of the year column
+        qual_col: Name of the qualification column
+        volume_col: Name of the volume column
         
     Returns:
         DataFrame with aggregated yearly metrics for the specified qualifications and role
     """
     # Define the columns to be used in grouping
-    columns = ['tilastovuosi', 'tutkinto']
+    columns = [year_col, qual_col]
     
     # Filter the DataFrame based on the list of qualifications
-    filtered_df = df[df['tutkinto'].isin(qualifications)]
+    filtered_df = df[df[qual_col].isin(qualifications)]
     
     # Append the role to the list of columns and group by those columns
     columns.append(role)
-    filtered_df = filtered_df.groupby(by=columns)['nettoopiskelijamaaraLkm'].sum().reset_index()
+    filtered_df = filtered_df.groupby(by=columns)[volume_col].sum().reset_index()
     
     # Remove rows where the role information is missing
     filtered_df = filtered_df[filtered_df[role] != 'Tieto puuttuu']
@@ -573,10 +506,24 @@ class EducationMarketAnalyzer:
             provider_volumes['kouluttaja'] = provider_volumes[self.provider_col]  # Rename for compatibility
             
             # Get top providers
-            top_providers = hae_tutkinnon_suurimmat_toimijat(provider_volumes, year, top_n)
-            
-            logger.info(f"Identified top {top_n} providers for {len(top_providers)} qualifications in {year}")
-            return top_providers
+            # Use the imported function from qualification_analyzer
+            # Note: get_top_providers expects raw data, not ranked data.
+            # We need to call it on year_data before ranking, or adjust get_top_providers
+            # For now, assuming get_top_providers works on the original year_data
+            # Let's call it on year_data directly. If this causes issues, we'll need to adjust.
+            top_providers_map = get_top_providers(
+                df=year_data,
+                year=year, # year is actually not used by get_top_providers as written, but passed for consistency
+                top_n=top_n,
+                provider_col=self.provider_col, # Using the class attribute
+                qual_col=self.qualification_col, # Using the class attribute
+                value_col=self.volume_col, # Using the class attribute
+                # subcontractor_col needs to be passed if get_top_providers uses it
+                subcontractor_col=self.subcontractor_col
+            )
+
+            logger.info(f"Identified top {top_n} providers for {len(top_providers_map)} qualifications in {year}")
+            return top_providers_map
         except Exception as e:
             logger.error(f"Error in get_top_providers_by_qualification: {e}")
             return {}

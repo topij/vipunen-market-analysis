@@ -119,8 +119,8 @@ def test_run_analysis_with_default_args(mock_dependencies):
     
     # Verify that results contain all expected keys
     expected_keys = [
-        'total_volumes', 'volumes_by_qualification', 'market_shares', 
-        'qualification_growth', 'qualification_cagr', 'excel_path'
+        'total_volumes', 'volumes_by_qualification', "provider's_market",
+        "cagr_analysis", 'excel_path'
     ]
     for key in expected_keys:
         assert key in results, f"Missing result key: {key}"
@@ -148,13 +148,18 @@ def test_run_analysis_with_custom_args(mock_dependencies):
     # Verify that the load_data function was called with use_dummy=True
     mock_dependencies['mock_load_data'].assert_called_once_with(file_path=mock_dependencies['mock_get_config'].return_value['paths']['data'], use_dummy=True)
     
-    # Verify that MarketAnalyzer was initialized with the correct parameters
-    mock_dependencies['mock_analyzer_class'].assert_called_once_with(
-        data=mock_dependencies['mock_clean_data'].return_value,
-        institution_names=['Custom Provider', 'Custom Provider Inc'],
-        filter_degree_types=True,
-        filter_by_institution_quals=True
-    )
+    # Verify MarketAnalyzer was initialized correctly
+    mock_dependencies['mock_analyzer_class'].assert_called_once()
+    call_args, call_kwargs = mock_dependencies['mock_analyzer_class'].call_args
+    
+    # Check that it was called with only the 'data' keyword argument
+    assert list(call_kwargs.keys()) == ['data'] 
+    
+    # Check the 'data' argument passed to MarketAnalyzer 
+    assert 'data' in call_kwargs
+    assert isinstance(call_kwargs['data'], pd.DataFrame)
+    # In this specific test case, filtering makes the data empty
+    assert call_kwargs['data'].empty
     
     # Verify that export_to_excel was called with the correct file name
     mock_dependencies['mock_export'].assert_called_once()
@@ -177,8 +182,10 @@ def test_run_analysis_error_handling(mock_dependencies):
         mock_logger.error.assert_called()
         
         # Verify that empty DataFrame are returned for all data keys
-        data_keys = ['total_volumes', 'volumes_by_qualification', 'market_shares', 
-                    'qualification_growth', 'qualification_cagr']
+        data_keys = [
+            'total_volumes', 'volumes_by_qualification', "provider's_market",
+            "cagr_analysis"
+        ]
         for key in data_keys:
             assert key in results
             assert isinstance(results[key], pd.DataFrame)

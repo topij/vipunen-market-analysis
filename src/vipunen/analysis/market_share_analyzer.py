@@ -19,7 +19,8 @@ def calculate_market_shares(df: pd.DataFrame, provider_names: List[str],
                         qual_col: str = 'tutkinto', 
                         provider_col: str = 'koulutuksenJarjestaja', 
                         subcontractor_col: str = 'hankintakoulutuksenJarjestaja',
-                        value_col: str = 'nettoopiskelijamaaraLkm') -> pd.DataFrame:
+                        value_col: str = 'nettoopiskelijamaaraLkm',
+                        share_calculation_basis: str = 'both') -> pd.DataFrame:
     """
     Calculate market shares for qualifications.
     
@@ -31,10 +32,25 @@ def calculate_market_shares(df: pd.DataFrame, provider_names: List[str],
         provider_col: Column name for the main provider
         subcontractor_col: Column name for the subcontractor
         value_col: Column name for the volume metric
+        share_calculation_basis: How to calculate market share ('main_provider', 'subcontractor', 'both').
+                                Defaults to 'both'. 'both' can lead to shares > 100%.
         
     Returns:
         pd.DataFrame: DataFrame with market share calculations
     """
+    # Validate share_calculation_basis
+    valid_bases = ['main_provider', 'subcontractor', 'both']
+    if share_calculation_basis not in valid_bases:
+        raise ValueError(f"Invalid share_calculation_basis: {share_calculation_basis}. Must be one of {valid_bases}")
+        
+    # Log warning if using 'both' method
+    if share_calculation_basis == 'both':
+        logger.warning(
+            "Using 'both' for share_calculation_basis. "
+            "Market shares are calculated based on total volume (main provider + subcontractor). "
+            "This may lead to double counting and the sum of shares per qualification/year exceeding 100%."
+        )
+        
     # Create a copy to avoid modifying the original
     data = df.copy()
     
@@ -50,30 +66,42 @@ def calculate_market_shares(df: pd.DataFrame, provider_names: List[str],
             # Filter data for this qualification
             qual_data = year_data[year_data[qual_col] == qual]
             
-            # Calculate total volume for this qualification
-            total_volume = qual_data[value_col].sum()
+            # Calculate total market volume for this qualification
+            total_market_volume = qual_data[value_col].sum()
             
-            if total_volume <= 0:
+            if total_market_volume <= 0:
                 logger.warning(f"Skipping {qual} in {year}: no volume data")
                 continue
             
-            # Calculate volumes and market shares for each provider
-            providers = sorted(qual_data[provider_col].dropna().unique())
+            # Determine providers involved in this qualification (both main and sub)
+            main_providers = set(qual_data[provider_col].dropna().unique())
+            sub_providers = set(qual_data[subcontractor_col].dropna().unique())
+            all_providers = sorted(list(main_providers.union(sub_providers)))
             
-            for provider in providers:
+            # Calculate volumes and market shares for each provider involved
+            # Note: Looping through all_providers ensures we capture subcontractors who might not be main providers
+            for provider in all_providers:
                 # Provider's volume as main provider
                 provider_volume = qual_data[qual_data[provider_col] == provider][value_col].sum()
                 
                 # Provider's volume as subcontractor
                 subcontractor_volume = qual_data[qual_data[subcontractor_col] == provider][value_col].sum()
                 
-                # Total provider volume in this qualification
-                total_provider_volume = provider_volume + subcontractor_volume
+                # Total provider activity volume (main + sub)
+                total_provider_activity_volume = provider_volume + subcontractor_volume
                 
-                # Market share
-                market_share = (total_provider_volume / total_volume) * 100
+                # Calculate market share based on the chosen basis
+                numerator_volume = 0
+                if share_calculation_basis == 'main_provider':
+                    numerator_volume = provider_volume
+                elif share_calculation_basis == 'subcontractor':
+                    numerator_volume = subcontractor_volume
+                else: # 'both'
+                    numerator_volume = total_provider_activity_volume
                 
-                # Total number of providers and subcontractors for this qualification
+                market_share = (numerator_volume / total_market_volume) * 100
+                
+                # Total number of unique main providers and subcontractors for this qualification
                 provider_count = qual_data[provider_col].nunique()
                 subcontractor_count = qual_data[subcontractor_col].dropna().nunique()
                 
@@ -84,8 +112,8 @@ def calculate_market_shares(df: pd.DataFrame, provider_names: List[str],
                     'provider': provider,
                     'volume_as_provider': provider_volume,
                     'volume_as_subcontractor': subcontractor_volume,
-                    'total_volume': total_provider_volume,
-                    'qualification_market_volume': total_volume,
+                    'total_volume': total_provider_activity_volume, # Renamed for clarity
+                    'qualification_market_volume': total_market_volume,
                     'market_share': market_share,
                     'provider_count': provider_count,
                     'subcontractor_count': subcontractor_count,
@@ -205,6 +233,12 @@ def calculate_total_volumes(df: pd.DataFrame, provider_names: List[str],
     Returns:
         pd.DataFrame: Summary DataFrame with volume breakdowns by year
     """
+    # Handle empty input DataFrame
+    if df.empty:
+        logger.warning("Input DataFrame is empty, returning empty DataFrame.")
+        # Return empty DataFrame with expected columns
+        return pd.DataFrame(columns=[year_col, 'järjestäjänä', 'hankintana', 'Yhteensä', 'järjestäjä_osuus (%)'])
+
     # Create a copy of the dataframe to avoid modifying the original
     df_copy = df.copy()
     

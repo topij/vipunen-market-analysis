@@ -4,7 +4,7 @@ Tests for the qualification_analyzer module.
 import pytest
 import pandas as pd
 import numpy as np
-from src.vipunen.analysis.qualification_analyzer import (
+from vipunen.analysis.qualification_analyzer import (
     analyze_qualification_growth,
     calculate_cagr_for_groups
 )
@@ -101,7 +101,8 @@ def test_calculate_cagr_for_groups():
     group_a = result[result['group'] == 'A'].iloc[0]
     
     # CAGR should be ((121/100)^(1/2) - 1) * 100 = 10%
-    assert group_a['CAGR'] == "10.00%"
+    assert pd.api.types.is_numeric_dtype(result['CAGR'])
+    assert group_a['CAGR'] == pytest.approx(10.0)
     assert group_a['First Year'] == 2020
     assert group_a['Last Year'] == 2022
     
@@ -109,7 +110,7 @@ def test_calculate_cagr_for_groups():
     group_b = result[result['group'] == 'B'].iloc[0]
     
     # CAGR should be ((288/200)^(1/2) - 1) * 100 = 20%
-    assert group_b['CAGR'] == "20.00%"
+    assert group_b['CAGR'] == pytest.approx(20.0)
     
     # Test with multiple group columns
     result_multi = calculate_cagr_for_groups(

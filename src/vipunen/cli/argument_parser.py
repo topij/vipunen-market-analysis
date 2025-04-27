@@ -6,15 +6,18 @@ education market analysis workflow.
 """
 import argparse
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from ..config.config_loader import get_config
 
 logger = logging.getLogger(__name__)
 
-def parse_arguments() -> argparse.Namespace:
+def parse_arguments(args_list: Optional[List[str]] = None) -> argparse.Namespace:
     """
     Parse command-line arguments for the education market analysis.
+    
+    Args:
+        args_list: Optional list of strings to parse. If None, defaults to sys.argv[1:].
     
     Returns:
         argparse.Namespace: Parsed arguments
@@ -50,11 +53,11 @@ def parse_arguments() -> argparse.Namespace:
     )
     
     parser.add_argument(
-        "--variant", "-v",
-        dest="variants",
-        action="append",
-        help="Name variant for the institution (can be specified multiple times)",
-        default=[]
+        '--variant', '-V',
+        action='append',
+        dest='variants',
+        default=[],
+        help='Name variant for the institution (can be specified multiple times)'
     )
     
     parser.add_argument(
@@ -88,20 +91,20 @@ def parse_arguments() -> argparse.Namespace:
         default=False
     )
     
-    return parser.parse_args()
+    # Parse arguments (from args_list if provided, else from sys.argv)
+    return parser.parse_args(args_list)
 
-def get_institution_variants(args: argparse.Namespace) -> list:
+def get_institution_variants(args: argparse.Namespace, config: Dict[str, Any]) -> List[str]:
     """
     Get the institution name variants, combining command-line arguments with config defaults.
     
     Args:
         args: Parsed command-line arguments
+        config: Configuration dictionary
         
     Returns:
         list: List of institution name variants
     """
-    config = get_config()
-    
     # Use variants from command line if provided
     if args.variants:
         variants = list(args.variants)

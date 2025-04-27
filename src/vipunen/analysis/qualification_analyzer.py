@@ -151,16 +151,6 @@ def calculate_cagr_for_groups(df: pd.DataFrame,
             except ZeroDivisionError:
                 cagr = np.nan  # Undefined, occurs if start and end years are the same
         
-        # Format CAGR for readability
-        if np.isnan(cagr):
-            cagr_formatted = ""
-        elif np.isinf(cagr) and cagr > 0:
-            cagr_formatted = "∞"
-        elif np.isinf(cagr) and cagr < 0:
-            cagr_formatted = "-∞"
-        else:
-            cagr_formatted = f"{cagr:.2f}%"
-        
         # Create a DataFrame for this group's CAGR
         if isinstance(name, tuple):
             # For multiple groupby columns, create a dict with column names as keys
@@ -169,7 +159,8 @@ def calculate_cagr_for_groups(df: pd.DataFrame,
             # For a single groupby column
             cagr_dict = {groupby_columns[0]: name}
         
-        cagr_dict['CAGR'] = cagr_formatted
+        # Assign the numeric CAGR value (handle inf/nan)
+        cagr_dict['CAGR'] = cagr 
         cagr_dict['First Year'] = first_year_offered
         cagr_dict['Last Year'] = last_year_offered
         cagr_dict['First Year Volume'] = start_value

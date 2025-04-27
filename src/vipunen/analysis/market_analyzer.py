@@ -8,8 +8,11 @@ import pandas as pd
 import logging
 import numpy as np
 from typing import List, Dict, Any, Optional, Union
+from .qualification_analyzer import calculate_cagr_for_groups
 
 from ..config.config_loader import get_config
+from .market_share_analyzer import calculate_market_shares as calculate_detailed_market_shares
+from .market_share_analyzer import calculate_market_share_changes
 from .education_market import EducationMarketAnalyzer, hae_kouluttaja_nom
 
 logger = logging.getLogger(__name__)
@@ -267,21 +270,157 @@ class MarketAnalyzer:
         # Restore original data
         result_df = growth_sorted_df.copy()
         
-        # Format percentage columns
-        result_df['Current Market Share'] = result_df['Current Market Share'].apply(lambda x: f"{x*100:.2f}%")
-        result_df['Previous Market Share'] = result_df['Previous Market Share'].apply(lambda x: f"{x*100:.2f}%")
-        result_df['Volume Growth'] = result_df['Volume Growth'].apply(lambda x: f"{x*100:.2f}%" if not np.isinf(x) else "New")
-        result_df['Market Share Change'] = result_df['Market Share Change'].apply(lambda x: f"{x*100:.2f}%")
-        
         # Sort by current volume for final display
         result_df = result_df.sort_values('Current Volume', ascending=False).reset_index(drop=True)
         
+        # Rename columns to match expected output structure where possible
+        result_df = result_df.rename(columns={
+            'Institution': 'Provider',
+            'Current Volume': 'Total Volume', # Represents total volume in the Current Year
+            'Current Market Share': 'Market Share (%)' # Represents share in the Current Year
+        })
+        
         # Select columns for final result
         return result_df[[
-            'Institution', 'Current Volume', 'Previous Volume', 
-            'Current Market Share', 'Previous Market Share',
-            'Volume Growth', 'Market Share Change', 'market_gainer', 'Is Target'
+            'Provider', 'Total Volume', 'Previous Volume', 
+            'Market Share (%)', 'Previous Market Share',
+            'Volume Growth', 'Market Share Change', 'market_gainer' # 'Is Target' is less relevant here
         ]]
+    
+    def calculate_providers_market(self) -> pd.DataFrame:
+        """
+        Calculate the detailed provider market data as expected for the 'Provider\'s Market' sheet.
+        This includes market shares and ranks for all providers within qualifications
+        relevant to the target institution, across all years.
+
+        Returns:
+            DataFrame matching the structure defined in docs/export_file_structure.txt
+        """
+        if self.data.empty or not self.institution_names or self.min_year is None or self.max_year is None:
+            logger.warning("Cannot calculate provider's market: missing data or institution names.")
+            return pd.DataFrame()
+
+        # Step 1: Filter data to relevant qualifications (those offered by the target institution)
+        # Use the internal method to get the list of qualifications offered by the institution across all years
+        # This requires instantiating EducationMarketAnalyzer temporarily or duplicating the logic
+        # Let's duplicate the core logic for simplicity here, focusing on all years
+        inst_quals = self.data[
+            (self.data['koulutuksenJarjestaja'].isin(self.institution_names)) |
+            (self.data['hankintakoulutuksenJarjestaja'].isin(self.institution_names))
+        ]['tutkinto'].unique().tolist()
+
+        if not inst_quals:
+            logger.warning(f"Target institution '{self.institution_names}' does not offer any qualifications in the dataset.")
+            return pd.DataFrame()
+
+        logger.info(f"Analyzing market for {len(inst_quals)} qualifications offered by {self.institution_short_name}")
+        filtered_data = self.data[self.data['tutkinto'].isin(inst_quals)].copy()
+
+        # Step 2: Calculate detailed market shares for all providers in these qualifications across all years
+        detailed_shares = calculate_detailed_market_shares(
+            df=filtered_data,
+            provider_names=self.institution_names, # Used to flag target provider, not for filtering here
+            year_col='tilastovuosi', 
+            qual_col='tutkinto',
+            provider_col='koulutuksenJarjestaja',
+            subcontractor_col='hankintakoulutuksenJarjestaja',
+            value_col='nettoopiskelijamaaraLkm'
+        )
+
+        if detailed_shares.empty:
+            logger.warning("Calculation of detailed market shares returned no data.")
+            return pd.DataFrame()
+
+        # Step 3: Calculate Market Rank within each year-qualification group
+        detailed_shares['Market Rank'] = detailed_shares.groupby(['tilastovuosi', 'tutkinto'])['market_share'].rank(ascending=False, method='min').astype(int)
+
+        # Step 4: Calculate YoY Market Share Growth and Gainers
+        all_years = sorted(detailed_shares['tilastovuosi'].unique())
+        market_changes_all_years = []
+        for i in range(1, len(all_years)):
+            current_year = all_years[i]
+            previous_year = all_years[i-1]
+            
+            # Calculate changes between these two years
+            changes_df = calculate_market_share_changes(
+                market_share_df=detailed_shares, # Use the full detailed shares dataframe
+                current_year=current_year,
+                previous_year=previous_year
+            )
+            if not changes_df.empty:
+                market_changes_all_years.append(changes_df)
+
+        # Combine all yearly changes
+        if market_changes_all_years:
+            combined_changes = pd.concat(market_changes_all_years, ignore_index=True)
+            # Select and rename relevant columns
+            change_cols = combined_changes[[
+                'tutkinto', 'provider', 'current_year',
+                'market_share_change_percent', # Use the percentage growth
+                'gainer_rank'
+            ]].rename(columns={
+                'current_year': 'tilastovuosi',
+                'market_share_change_percent': 'Market Share Growth (%)', # Rename correctly
+                'gainer_rank': 'Market Gainer Rank'
+            })
+            
+            # Merge changes back into the main dataframe
+            detailed_shares = pd.merge(
+                detailed_shares, 
+                change_cols, 
+                on=['tilastovuosi', 'tutkinto', 'provider'], 
+                how='left'
+            )
+        else:
+            # Add empty columns if no changes calculated (e.g., only one year of data)
+            detailed_shares['Market Share Growth (%)'] = np.nan
+            detailed_shares['Market Gainer Rank'] = np.nan
+
+        # Step 5: Format and select final columns according to docs/export_file_structure.txt
+        final_df = detailed_shares.rename(columns={
+            'tilastovuosi': 'Year',
+            'tutkinto': 'Qualification',
+            'provider': 'Provider',
+            'volume_as_provider': 'Provider Amount',
+            'volume_as_subcontractor': 'Subcontractor Amount',
+            'total_volume': 'Total Volume', # This is provider's total volume
+            'qualification_market_volume': 'Market Total', # This is the total market size for the qual
+            'market_share': 'Market Share (%)'
+        })
+
+        # Ensure columns are numeric, replacing inf with NaN
+        numeric_cols = ['Provider Amount', 'Subcontractor Amount', 'Total Volume', 
+                        'Market Total', 'Market Share (%)', 'Market Share Growth (%)']
+        for col in numeric_cols:
+            if col in final_df.columns:
+                # Convert to numeric, coercing errors to NaN
+                final_df[col] = pd.to_numeric(final_df[col], errors='coerce')
+                # Replace any infinities that might result from division by zero
+                final_df[col] = final_df[col].replace([np.inf, -np.inf], np.nan)
+        
+        # Keep Market Rank as integer
+        if 'Market Rank' in final_df.columns:
+            final_df['Market Rank'] = final_df['Market Rank'].fillna(-1).astype(int) # Fill NaN ranks with -1 or similar
+        if 'Market Gainer Rank' in final_df.columns:
+            # Convert to nullable integer type to keep NaNs for the first year
+            # Round first in case of float ranks, then convert to nullable integer
+            final_df['Market Gainer Rank'] = final_df['Market Gainer Rank'].round().astype('Int64')
+
+        # Define final column order based on the spec
+        final_columns = [
+            'Year', 'Qualification', 'Provider', 'Provider Amount', 'Subcontractor Amount',
+            'Total Volume', 'Market Total', 'Market Share (%)', 'Market Rank',
+            'Market Share Growth (%)', 'Market Gainer Rank' # Use the correct column name
+        ]
+
+        # Select and reorder columns, dropping extras
+        final_df = final_df[final_columns]
+
+        # Sort for readability
+        final_df = final_df.sort_values(by=['Year', 'Qualification', 'Market Rank'], ascending=[True, True, True])
+
+        logger.info(f"Calculated provider's market data with {len(final_df)} rows.")
+        return final_df
     
     def calculate_qualification_growth(self) -> pd.DataFrame:
         """
@@ -325,129 +464,61 @@ class MarketAnalyzer:
         if self.data.empty or not self.institution_names or self.min_year is None or self.max_year is None:
             return pd.DataFrame()
         
-        # We'll track qualification data for the target institution
-        qualification_data = {}
-        
-        # Filter data to include only rows from the target institution
-        # (either as provider or subcontractor)
+        # Filter for the institution's data
         institution_data = self.data[
-            (self.data['koulutuksenJarjestaja'].isin(self.institution_names)) | 
+            (self.data['koulutuksenJarjestaja'].isin(self.institution_names)) |
             (self.data['hankintakoulutuksenJarjestaja'].isin(self.institution_names))
-        ].copy()
-        
-        if institution_data.empty:
+        ].copy()  # Create a copy to avoid SettingWithCopyWarning
+
+        # Determine start and end years for CAGR
+        start_year = institution_data['tilastovuosi'].min() if not institution_data.empty else None
+        end_year = institution_data['tilastovuosi'].max() if not institution_data.empty else None
+
+        if start_year is None or end_year is None or start_year == end_year:
+            logger.warning("Not enough data points for CAGR calculation.")
             return pd.DataFrame()
+
+        # Group by qualification and year, sum volumes
+        grouped_data = institution_data.groupby(['tutkinto', 'tilastovuosi'])['nettoopiskelijamaaraLkm'].sum().reset_index()
+
+        # Calculate CAGR using the utility function
+        cagr_results = calculate_cagr_for_groups(
+            df=grouped_data,
+            groupby_columns=['tutkinto'],
+            value_column='nettoopiskelijamaaraLkm',
+            year_column='tilastovuosi'
+        )
+
+        # Ensure required columns exist in the result
+        required_cols = ['Qualification', 'CAGR', 'First Year', 'Last Year', 'First Year Volume', 'Last Year Volume'] # Keep English names
         
-        # Identify all unique qualifications offered by the target institution
-        unique_qualifications = institution_data['tutkintokoodi'].unique()
-        
-        # For each qualification, calculate volumes by year for both the institution and the total market
-        for qualification in unique_qualifications:
-            # Get data for this qualification
-            qual_data = self.data[self.data['tutkintokoodi'] == qualification].copy()
-            
-            # Get the qualification name from any row (should be consistent)
-            qual_name = qual_data['tutkinto'].iloc[0] if not qual_data.empty else f"Unknown ({qualification})"
-            
-            # Initialize tracking for this qualification
-            if qualification not in qualification_data:
-                qualification_data[qualification] = {
-                    'name': qual_name,
-                    'institution_volumes_by_year': {},
-                    'market_volumes_by_year': {},
-                    'first_year': None,
-                    'last_year': None
-                }
-            
-            # Calculate volumes by year for the institution
-            for year in range(self.min_year, self.max_year + 1):
-                year_data = qual_data[qual_data['tilastovuosi'] == year]
-                
-                # Calculate market volume for this qualification in this year
-                market_volume = year_data['nettoopiskelijamaaraLkm'].sum()
-                qualification_data[qualification]['market_volumes_by_year'][year] = market_volume
-                
-                # Calculate institution volume for this qualification in this year
-                institution_year_data = year_data[
-                    (year_data['koulutuksenJarjestaja'].isin(self.institution_names)) | 
-                    (year_data['hankintakoulutuksenJarjestaja'].isin(self.institution_names))
-                ]
-                institution_volume = institution_year_data['nettoopiskelijamaaraLkm'].sum()
-                
-                # Only track years where the institution offered this qualification
-                if institution_volume > 0:
-                    qualification_data[qualification]['institution_volumes_by_year'][year] = institution_volume
-                    
-                    # Update first and last years
-                    if qualification_data[qualification]['first_year'] is None or year < qualification_data[qualification]['first_year']:
-                        qualification_data[qualification]['first_year'] = year
-                    
-                    if qualification_data[qualification]['last_year'] is None or year > qualification_data[qualification]['last_year']:
-                        qualification_data[qualification]['last_year'] = year
-        
-        # Calculate CAGR and create result DataFrame
-        results = []
-        
-        for qualification, data in qualification_data.items():
-            # Skip if we don't have first/last year data
-            if data['first_year'] is None or data['last_year'] is None:
-                continue
-            
-            # Skip if only offered in one year (can't calculate growth)
-            if data['first_year'] == data['last_year']:
-                continue
-            
-            first_year = data['first_year']
-            last_year = data['last_year']
-            years_present = len(data['institution_volumes_by_year'])
-            
-            first_year_inst_volume = data['institution_volumes_by_year'].get(first_year, 0)
-            last_year_inst_volume = data['institution_volumes_by_year'].get(last_year, 0)
-            
-            # Calculate market volumes
-            first_year_market_volume = data['market_volumes_by_year'].get(first_year, 0)
-            last_year_market_volume = data['market_volumes_by_year'].get(last_year, 0)
-            
-            # Calculate market shares
-            first_year_share = (first_year_inst_volume / first_year_market_volume) if first_year_market_volume > 0 else 0
-            last_year_share = (last_year_inst_volume / last_year_market_volume) if last_year_market_volume > 0 else 0
-            
-            # Calculate CAGR
-            years_diff = last_year - first_year
-            if years_diff > 0 and first_year_inst_volume > 0:
-                cagr = (last_year_inst_volume / first_year_inst_volume) ** (1 / years_diff) - 1
+        # Initial check
+        missing_cols = [col for col in required_cols if col not in cagr_results.columns]
+        has_tutkinto = 'tutkinto' in cagr_results.columns
+
+        if missing_cols:
+            # Check if the only missing column is 'Qualification' and 'tutkinto' is present
+            if missing_cols == ['Qualification'] and has_tutkinto:
+                logger.info("'Qualification' column missing, but 'tutkinto' found. Renaming 'tutkinto' to 'Qualification'.")
+                cagr_results = cagr_results.rename(columns={'tutkinto': 'Qualification'}) # Rename
+                # No further action needed here, the check passed after rename
             else:
-                cagr = 0
-            
-            results.append({
-                'Qualification': data['name'],
-                'First Year': first_year,
-                'Last Year': last_year,
-                'Years Present': years_present,
-                'First Year Volume': first_year_inst_volume,
-                'Last Year Volume': last_year_inst_volume,
-                'First Year Market Volume': first_year_market_volume,
-                'Last Year Market Volume': last_year_market_volume,
-                'First Year Market Share': first_year_share,
-                'Last Year Market Share': last_year_share,
-                'CAGR': cagr
-            })
+                # If other columns are missing, or 'Qualification' is missing without 'tutkinto' present
+                logger.warning(f"CAGR calculation result missing required columns. Missing: {missing_cols}. Found: {cagr_results.columns}. Expected: {required_cols}")
+                # Check if potentially optional columns like 'Years Present' exist, just for logging info
+                optional_cols = ['Years Present']
+                found_optional = [col for col in optional_cols if col in cagr_results.columns]
+                if found_optional:
+                    logger.info(f"Found optional columns: {found_optional}")
+                
+                # Return empty DataFrame with the expected columns
+                return pd.DataFrame(columns=required_cols)
         
-        if not results:
-            return pd.DataFrame()
-        
-        # Convert to DataFrame
-        result_df = pd.DataFrame(results)
-        
-        # Format percentages
-        result_df['First Year Market Share'] = result_df['First Year Market Share'].apply(lambda x: f"{x*100:.2f}%")
-        result_df['Last Year Market Share'] = result_df['Last Year Market Share'].apply(lambda x: f"{x*100:.2f}%")
-        result_df['CAGR'] = result_df['CAGR'].apply(lambda x: f"{x*100:.2f}%")
-        
-        # Sort by qualification name
-        result_df = result_df.sort_values('Qualification').reset_index(drop=True)
-        
-        return result_df
+        # If we reach here, either the columns were initially correct, 
+        # or 'tutkinto' was successfully renamed to 'Qualification'.
+
+        logger.info(f"Calculated CAGR for {len(cagr_results)} qualifications")
+        return cagr_results
     
     def get_all_results(self) -> Dict[str, pd.DataFrame]:
         """
@@ -459,7 +530,7 @@ class MarketAnalyzer:
         return {
             "total_volumes": self.calculate_total_volumes(),
             "volumes_by_qualification": self.calculate_volumes_by_qualification(),
-            "provider's_market": self.calculate_market_shares(),
+            "provider's_market": self.calculate_providers_market(),
             "cagr_analysis": self.calculate_qualification_cagr()
         }
     

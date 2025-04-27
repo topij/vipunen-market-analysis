@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from src.vipunen.visualization.volume_plots import (
+from vipunen.visualization.volume_plots import (
     save_plot,
     plot_total_volumes,
     plot_top_qualifications

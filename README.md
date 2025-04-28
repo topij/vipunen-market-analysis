@@ -1,8 +1,8 @@
 # Finnish Education Market Analysis
 
-This project provides tools for analyzing the Finnish vocational education market from a provider's perspective. It focuses on analyzing ammattitutkinto (further vocational qualifications) and erikoisammattitutkinto (specialist vocational qualifications).
+This project provides tools for analyzing the Finnish vocational education market using data fetched from the open[Vipunen API](https://vipunen.fi/fi-fi/Sivut/Vipunen-API.aspx). The API is maintained by the [Finnish education administration](https://vipunen.fi/en-gb/). This project focuses on one particular data resource available the API which gives data on students in vocational education and training, as well as completed qualifications, categorized by year, qualification level, and education provider.
 
-The Vipunen project is a specialized data analysis toolkit designed for educational institutions to gain insights into the Finnish vocational education market. It allows institutions to:
+The data analysis toolkit allows institutions to:
 
 - Analyze their market position and trends
 - Identify growing and declining qualifications
@@ -11,7 +11,14 @@ The Vipunen project is a specialized data analysis toolkit designed for educatio
 - Calculate compound annual growth rates (CAGR) for qualifications
 - Generate comprehensive reports and visualizations
 
+The focus in this iteration of the project has been on analyzing the market based on the annual net student count ("netto-opiskelijamäärä" in Finnish). It means the number of students an educational institution has for each day of the year divided by the number of days in the year. 
+
+In this way, the net student count accurately reflects the average student volume for the year and complements the calendar year student count data, which includes everyone who studied during that year, regardless of the duration of their studies ([source](https://www.oph.fi/fi/uutiset/2020/vipunen-tilastopalveluun-nopeasti-paivittyvaa-tietoa-ammatillisesta-koulutuksesta)). In the analysis this is refered to as _student volume_.
+
 See the full documentation in the [docs](docs/INDEX.md) directory.
+
+### Project Background
+I used to work at an [organization](https://rastorinst.fi) offering, among other things, vocational qualifications. As the person in charge of growth and development, I did a lot of data analysis. I did the early versions of this project during that time for my own data wrangling needs. After leaving that organization I wanted to re-write the project to accomodate wider set of use cases. I don't maintain the project actively, but anyone is free to use, modify and improve it for their own needs. Have fun :-)
 
 ## Installation and Setup
 
@@ -59,7 +66,7 @@ python run_analysis.py --data-file <path_to_data> --institution <institution_nam
 For example:
 
 ```bash
-python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
+python run_analysis.py --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
 ```
 
 See the full [CLI Guide](docs/CLI_GUIDE.md) for all available arguments and options like filtering and specifying output directories.
@@ -107,7 +114,7 @@ excel_file = export_to_excel(
 )
 print(f"Exported results to {excel_file}")
 
-# Further programmatic steps (e.g., custom visualization) could follow
+
 ```
 
 See the [Programmatic Usage Guide](docs/PROGRAMMATIC_USAGE.md) and the [Market Analysis Features](docs/MARKET_ANALYSIS.md) documentation for more details.
@@ -133,7 +140,7 @@ The analysis typically produces:
 2.  A set of **visualization plots** (PNG images) saved in a `plots` subdirectory, showing trends in volumes, market shares, and growth. See [Visualization Documentation](docs/VISUALIZATION.md).
 3.  Console logs detailing the analysis progress.
 
-Outputs are saved by default under `data/reports/[institution_short_name]/`.
+Outputs are saved by default under `data/reports/[institution_short_name]_market_analysis_[timestamp]/`.
 
 ## Code Structure
 

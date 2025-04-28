@@ -24,6 +24,7 @@ columns:
     market_gainer: 'market gainer'
 
 # Institution information
+# Change as needed to match the institution you want to analyze
 institutions:
   default:
     name: "Rastor-instituutti ry"
@@ -36,12 +37,26 @@ institutions:
 qualification_types:
   - "Ammattitutkinnot"
   - "Erikoisammattitutkinnot"
-  - "Perustutkinnot"
+  - "Ammatilliset perustutkinnot"
 
 # File paths
 paths:
   data: "data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
   output: "data/reports"
+
+# API Configuration
+api:
+  base_url: "https://api.vipunen.fi/api/resources"
+  default_dataset: "amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto"
+  limit: 5000
+  max_retries: 3
+  retry_delay: 5 # seconds
+  timeout: 60 # seconds increased timeout
+  caller_id: "0201689-0.rastor-instituutti" # TODO: Consider moving to environment variable
+  backup_dir_name: "old_api_calls_output"
+  csv_separator: ";"
+  csv_encoding: "utf-8"
+  metadata_dir_name: ".metadata" # Directory for storing update date info
 
 # Excel export settings
 excel:

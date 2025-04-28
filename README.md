@@ -18,7 +18,7 @@ In this way, the net student count accurately reflects the average student volum
 See the full documentation in the [docs](docs/INDEX.md) directory.
 
 ### Project Background
-I used to work at an [organization](https://rastorinst.fi) offering, among other things, vocational qualifications. As the person in charge of growth and development, I did a lot of data analysis. I did the early versions of this project during that time for my own data wrangling needs. After leaving that organization I wanted to re-write the project to accomodate wider set of use cases. I don't maintain the project actively, but anyone is free to use, modify and improve it for their own needs. Have fun :-)
+I used to work at an [organization](https://rastorinst.fi) offering, among other things, vocational qualifications. As the person in charge of growth and development, I did a lot of data analysis. I did the early versions of this project during that time for my own data wrangling needs. After leaving that organization I wanted to re-write and tidy up the project to accomodate wider set of use cases. I don't maintain the project actively, but anyone is free to use, modify and improve it for their own needs. Have fun :-)
 
 ## Installation and Setup
 

@@ -43,8 +43,9 @@ def test_load_data_from_csv(mock_get_file_utils, sample_raw_data):
     assert mock_file_utils.load_single_file.call_count >= 1
     # Check the arguments of the first call
     # Check calls with different separators
+    # Expect positional first argument (filename) and keyword args for the rest
     mock_file_utils.load_single_file.assert_any_call(
-        file_name=Path(file_path).name, 
+        Path(file_path).name, # Positional argument for filename
         input_type='raw', 
         sub_path=None, # Expect sub_path=None when path doesn't contain 'raw/'
         sep=';'

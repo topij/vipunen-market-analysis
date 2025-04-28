@@ -80,11 +80,16 @@ qualification_growth = results['qualification_growth']
 
 ## Configuration
 
-The package uses YAML configuration files. The default configuration is in `src/vipunen/config/config.yaml`. You can override this by:
+The package uses YAML configuration files. The default configuration is embedded in the `config_loader` but user overrides are prioritized.
+
+The configuration loader (`src/vipunen/config/config_loader.py`) looks for a `config.yaml` file in the following locations, in order of priority:
 
 1. Creating a `config.yaml` file in the current directory
 2. Creating a `config.yaml` file in a `config/` subdirectory
 3. Creating a `.vipunen/config.yaml` file in your home directory
+4. The default configuration file previously included with the package (`src/vipunen/config/config.yaml`) - *Note: This path is deprecated for user overrides.*
+
+It is recommended to place your custom `config.yaml` in the project root directory.
 
 Configuration includes:
 - Column name mappings for input and output

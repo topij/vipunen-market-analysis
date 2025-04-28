@@ -165,10 +165,8 @@ src/vipunen/
 │   ├── market_analyzer.py        # **Core analysis orchestration class**
 │   ├── market_share_analyzer.py  # Specialized market share calculations
 │   └── qualification_analyzer.py # Qualification-specific metrics (CAGR)
-├── cli/                  # Command-line interface
-│   ├── analyze_cli.py     # Main CLI workflow logic
-│   └── argument_parser.py # CLI argument parsing
-├── config/               # Configuration management (config.yaml)
+├── cli/                  # Command-line interface logic
+│   ├── ...
 ├── data/                 # Data loading and processing
 │   ├── data_loader.py    # Functions for loading the raw data
 │   ├── data_processor.py # Functions for cleaning and preparing data
@@ -191,7 +189,7 @@ Key dependencies include:
 - seaborn
 - pathlib
 - PyYAML
-- FileUtils (v0.6.1+)
+- FileUtils (v0.6.3+)
 - squarify
 
 See `environment.yaml` for a full list and versions.

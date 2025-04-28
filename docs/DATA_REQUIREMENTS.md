@@ -142,4 +142,14 @@ Refer to the [CLI Guide](CLI_GUIDE.md) for more script details.
 
 ## Data Source
 
-The expected data format is based on the publicly available education statistics from Vipunen (Finnish Education Statistics Database). The raw data can be downloaded from [Vipunen](https://vipunen.fi/fi-fi). 
+The expected data format is based on the publicly available education statistics from Vipunen (Finnish Education Statistics Database). The raw data can be downloaded from [Vipunen](https://vipunen.fi/fi-fi).
+
+### Data Fetching Script (`src/scripts/fetch_data.py`)
+
+A script using the `VipunenAPIClient` to download a specific dataset.
+*   Checks the last update date stored in a `.metadata` file (relative to the output dir).
+*   Downloads data only if it's newer or if `--force-download` is used.
+*   Saves data to the directory containing the file specified by `paths.data` in `config.yaml` (or `--output-dir` override).
+*   Requires API configuration (like `default_dataset`) in `config.yaml`.
+
+### Configuration (`config.yaml`) 

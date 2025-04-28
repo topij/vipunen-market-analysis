@@ -392,21 +392,33 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Step 6: Create directory structure for outputs (only if analysis succeeds)
         logger.info("Creating output directories")
         
-        # Determine output directory
-        output_dir = args.get('output_dir')
-        if output_dir is None:
-            output_dir = config['paths'].get('output', 'data/reports')
-            
-        # Create directory name based on institution
+        # Determine output directory path (e.g., project_root/data/reports/education_market_ri)
+        base_output_path = config['paths'].get('output', 'data/reports')
+        if args.get('output_dir'): # Allow command-line override
+             base_output_path = args['output_dir']
+             
         dir_name = f"education_market_{institution_short_name.lower()}"
-        output_dir = Path(output_dir) / dir_name
+        # full_output_dir_path includes the base 'data' dir if present in config
+        full_output_dir_path = Path(base_output_path) / dir_name
         
-        # Create directory
-        output_dir.mkdir(exist_ok=True, parents=True)
+        # --- Determine path relative to base 'data' directory for FileUtils --- 
+        # FileUtils expects paths relative to its configured type directories (e.g., 'reports')
+        try:
+            # Find the base data dir component (e.g., 'data')
+            base_data_dir = Path(config['paths']['data']).parts[0] # Assumes paths.data exists and gives base
+            excel_output_dir_relative = str(full_output_dir_path.relative_to(base_data_dir))
+        except (KeyError, IndexError, ValueError) as e:
+            logger.warning(f"Could not reliably determine path relative to base data directory ({e}). Using full path: {full_output_dir_path}")
+            # Fallback: Pass the full path; export_to_excel should handle it if configured correctly
+            excel_output_dir_relative = str(full_output_dir_path)
+            
+        logger.info(f"Calculated relative output dir for export: {excel_output_dir_relative}")
         
-        # Create plots directory
-        plots_dir = output_dir / "plots"
-        plots_dir.mkdir(exist_ok=True)
+        # Create the full directory path locally (for plots etc.)
+        # FileUtils will handle creation for the Excel file path
+        plots_dir = full_output_dir_path / "plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ensured plots directory exists: {plots_dir}")
         
         # Step 7: Export results to Excel (only if analysis succeeds)
         logger.info("Exporting results to Excel")
@@ -419,11 +431,11 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             "CAGR Analysis": analysis_results.get('qualification_cagr', pd.DataFrame()).reset_index(drop=True)
         }
         
-        # Export to Excel
+        # Export to Excel using the relative path
         excel_path = export_to_excel(
             data_dict=excel_data,
             file_name=f"{institution_short_name.lower()}_market_analysis",
-            output_dir=output_dir,
+            output_dir=excel_output_dir_relative, # Pass relative path
             include_timestamp=True
         )
         
@@ -432,6 +444,7 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Step 8: Generate Visualizations
         try:
             logger.info("Initializing visualizer...")
+            # Pass the full path for plots dir to visualizer
             visualizer = EducationVisualizer(output_dir=plots_dir)
             generate_visualizations(analysis_results, visualizer, analyzer, config)
         except Exception as vis_error:

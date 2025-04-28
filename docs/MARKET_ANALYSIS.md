@@ -65,12 +65,13 @@ The main method is `analyze()`, which orchestrates all calculations and returns 
 
 The `src/vipunen/cli/analyze_cli.py` script (see [CLI Guide](CLI_GUIDE.md)) orchestrates the typical workflow:
 
-1.  **Load Configuration**: Reads `config/config.yaml` (or specified file).
-2.  **Load and Prepare Data**: Uses `data_loader` and `data_processor` (see [Data Requirements](DATA_REQUIREMENTS.md)).
-3.  **Initialize `MarketAnalyzer`**: Passes cleaned data and sets `institution_names` and `institution_short_name` from config.
-4.  **Run Analysis**: Calls `analyzer.analyze(min_market_size_threshold=...)`.
-5.  **Export to Excel**: Uses `export_to_excel` to save the results dictionary from `analyze()` into different sheets (see [Excel Export](EXCEL_EXPORT.md)).
-6.  **Generate Visualizations**: Uses `EducationVisualizer` with the results from `analyze()` to create plots (see [Visualization Features](VISUALIZATION.md)).
+1.  **Load Configuration**: Reads `config.yaml` (from the project root or other prioritized locations) to get settings like institution variants, default paths, and analysis parameters.
+2.  **Load Data**: Uses `vipunen.data.data_loader.load_data` to load the raw data file specified (either via command-line or `paths.data` in the config).
+3.  **Clean and Prepare Data**: Uses `vipunen.data.data_processor.clean_and_prepare_data` to apply cleaning steps like handling missing values, merging variants, and shortening names.
+4.  **Initialize `MarketAnalyzer`**: Passes cleaned data and sets `institution_names` and `institution_short_name` from config.
+5.  **Run Analysis**: Calls `analyzer.analyze(min_market_size_threshold=...)`.
+6.  **Export to Excel**: Uses `export_to_excel` to save the results dictionary from `analyze()` into different sheets (see [Excel Export](EXCEL_EXPORT.md)).
+7.  **Generate Visualizations**: Uses `EducationVisualizer` with the results from `analyze()` to create plots (see [Visualization Features](VISUALIZATION.md)).
 
 ```python
 # Simplified flow from analyze_cli.py

@@ -53,23 +53,23 @@ def main():
 
     # Determine output directory
     if args.output_dir:
+        # Use the directory provided via command line
         output_dir = args.output_dir
     else:
-        # Infer output directory from the configured data path (removing filename)
+        # Infer output directory from the configured data path (expecting something like 'data/raw/default_file.csv')
         raw_data_path_str = paths_config.get('data')
         if raw_data_path_str:
+            # Assume the target is the directory containing the configured data file
+            # Typically, this should point to the 'raw' directory
             output_dir = Path(raw_data_path_str).parent
         else:
+            # Fallback if paths.data is not set in config
             logger.warning("Output directory not specified and 'paths.data' not found in config. Defaulting to 'data/raw'.")
             output_dir = Path("data/raw")
 
-    # Create output directory if it doesn't exist
-    try:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Ensured output directory exists: {output_dir}")
-    except OSError as e:
-        logger.error(f"Failed to create output directory {output_dir}: {e}")
-        return 1
+    logger.info(f"Target output directory: {output_dir}")
+    # Ensure output_dir is a Path object for consistency
+    output_dir = Path(output_dir)
 
     # Initialize the API client
     logger.info(f"Initializing API client for dataset: {dataset_name}")

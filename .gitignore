@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 
+# Cursor
+.cursorignore
+
 # C extensions
 *.so
 

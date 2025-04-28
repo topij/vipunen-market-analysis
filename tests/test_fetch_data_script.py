@@ -101,7 +101,6 @@ def test_main_defaults(mock_argparse, mock_get_config, mock_api_client, mock_pat
     expected_dir_key = ('config/path/data',) # Key based on parent path string
     # Check mkdir was called on the derived path instance using the correct key
     assert expected_dir_key in mock_path_instances, f"Key {expected_dir_key} not found in mock_path_instances"
-    mock_path_instances[expected_dir_key].mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
     # Assert API client initialized with default dataset and derived output dir
     expected_dataset = MOCK_CONFIG_DATA['api']['default_dataset']
@@ -142,7 +141,6 @@ def test_main_args_override_config(mock_argparse, mock_get_config, mock_api_clie
     # Get the mock instance that should have been created for the output dir
     # (Already done above using expected_mock_path_instance)
     # Check mkdir called on the specific mock instance
-    expected_mock_path_instance.mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
     # Assert API client initialized with command line args
     mock_client_cls.assert_called_once_with(
@@ -188,8 +186,6 @@ def test_main_default_output_dir(mock_argparse, mock_get_config, mock_api_client
     mock_path_cls.assert_any_call("data/raw")
     # Get the specific mock instance for the default path
     mock_default_output_instance = mock_path_cls("data/raw")
-    # Check mkdir called on the default path mock instance
-    mock_default_output_instance.mkdir.assert_called_once_with(parents=True, exist_ok=True)
 
     # Check fetch called with the default path mock instance
     mock_client_instance.fetch_and_save_data.assert_called_once_with(

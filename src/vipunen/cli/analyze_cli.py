@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from ..config.config_loader import get_config
-from ..data.data_loader import load_data, ensure_data_directory
+from ..data.data_loader import load_data
 from ..data.data_processor import clean_and_prepare_data
 from ..export.excel_exporter import export_to_excel
 from ..analysis.market_analyzer import MarketAnalyzer
@@ -316,7 +316,7 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     config = get_config()
     
     # Step 2: Define parameters for the analysis
-    data_file_path = ensure_data_directory(args.get('data_file', config['paths']['data']))
+    data_file_path = args.get('data_file', config['paths']['data'])
     institution_name = args.get('institution', config['institutions']['default']['name'])
     institution_short_name = args.get('short_name', config['institutions']['default']['short_name'])
     use_dummy = args.get('use_dummy', False)

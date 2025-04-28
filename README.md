@@ -15,7 +15,17 @@ The focus in this iteration of the project has been on analyzing the market base
 
 In this way, the net student count accurately reflects the average student volume for the year and complements the calendar year student count data, which includes everyone who studied during that year, regardless of the duration of their studies ([source](https://www.oph.fi/fi/uutiset/2020/vipunen-tilastopalveluun-nopeasti-paivittyvaa-tietoa-ammatillisesta-koulutuksesta)). In the analysis this is refered to as _student volume_.
 
-See the full documentation in the [docs](docs/INDEX.md) directory.
+## Documentation
+
+**For the full documentation, see the [Documentation Index](docs/INDEX.md).**
+
+Key guides include:
+*   [Tutorial](docs/TUTORIAL.md)
+*   [Command-Line Interface (CLI) Guide](docs/CLI_GUIDE.md)
+*   [Data Requirements (including fetching data)](docs/DATA_REQUIREMENTS.md)
+*   [Market Analysis Features](docs/MARKET_ANALYSIS.md)
+
+---
 
 ### Project Background
 I used to work at an [organization](https://rastorinst.fi) offering, among other things, vocational qualifications. As the person in charge of growth and development, I did a lot of data analysis. I did the early versions of this project during that time for my own data wrangling needs. After leaving that organization I wanted to re-write and tidy up the project to accomodate wider set of use cases. I don't maintain the project actively, but anyone is free to use, modify and improve it for their own needs. Have fun :-)
@@ -66,7 +76,6 @@ python run_analysis.py --data-file <path_to_data> --institution <institution_nam
 For example:
 
 ```bash
-python run_analysis.py --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
 python run_analysis.py --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
 ```
 

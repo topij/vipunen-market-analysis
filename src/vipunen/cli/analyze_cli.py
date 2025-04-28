@@ -9,6 +9,7 @@ import pandas as pd
 import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
+import math
 
 from ..config.config_loader import get_config
 from ..data.data_loader import load_data
@@ -227,10 +228,67 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
             ].dropna(subset=['Market Share Growth (%)'])
 
             if not latest_qual_df.empty:
-                gainers = latest_qual_df.nlargest(3, 'Market Share Growth (%)')
-                losers = latest_qual_df.nsmallest(3, 'Market Share Growth (%)')
-                # Ensure no overlap if fewer than 6 providers
-                plot_data = pd.concat([losers, gainers]).drop_duplicates().sort_values('Market Share Growth (%)')
+                # --- Filtering based on config ---
+                gainer_loser_config = config.get('analysis', {}).get('gainers_losers', {})
+                min_share_threshold = gainer_loser_config.get('min_market_share_threshold')
+                min_rank_percentile = gainer_loser_config.get('min_market_rank_percentile')
+
+                original_provider_count = len(latest_qual_df)
+                filtered_df = latest_qual_df.copy() # Start with a copy
+
+                # Apply Market Share Threshold
+                if min_share_threshold is not None and 'Market Share (%)' in filtered_df.columns:
+                    try:
+                        min_share = float(min_share_threshold)
+                        if 0 <= min_share <= 100:
+                            filtered_df = filtered_df[filtered_df['Market Share (%)'] >= min_share]
+                            logger.debug(f"[{qual}] Applying min market share threshold: >= {min_share}%. Kept {len(filtered_df)}/{original_provider_count} providers.")
+                        else:
+                            logger.warning(f"Invalid min_market_share_threshold ({min_share_threshold}), must be between 0 and 100. Skipping.")
+                    except ValueError:
+                        logger.warning(f"Invalid min_market_share_threshold ({min_share_threshold}), must be a number. Skipping.")
+
+                # Apply Market Rank Percentile Threshold
+                if min_rank_percentile is not None and 'Market Rank' in filtered_df.columns:
+                    try:
+                        percentile = float(min_rank_percentile)
+                        if 0 <= percentile <= 100:
+                            if not filtered_df.empty:
+                                # Calculate the rank cutoff. Lower rank numbers are better (e.g., rank 1 is best).
+                                # We want to keep the top 'percentile' percent.
+                                # Example: 90th percentile -> keep top 10% -> keep ranks <= ceil(total_providers * 0.10)
+                                cutoff_fraction = (100.0 - percentile) / 100.0
+                                num_providers_to_keep = math.ceil(len(filtered_df) * cutoff_fraction)
+                                # Ensure we keep at least one if possible
+                                num_providers_to_keep = max(1, num_providers_to_keep) 
+                                
+                                # Find the rank corresponding to the cutoff
+                                # Sort by rank to find the rank value at the Nth position
+                                sorted_by_rank = filtered_df.sort_values('Market Rank')
+                                if num_providers_to_keep <= len(sorted_by_rank):
+                                    rank_threshold = sorted_by_rank.iloc[num_providers_to_keep - 1]['Market Rank']
+                                    # Keep all providers with rank <= rank_threshold (handles ties)
+                                    filtered_df = filtered_df[filtered_df['Market Rank'] <= rank_threshold]
+                                    logger.debug(f"[{qual}] Applying min market rank percentile: {percentile}th (keep top {100-percentile:.1f}% => rank <= {rank_threshold}). Kept {len(filtered_df)} providers.")
+                                else:
+                                    # Keep everyone if cutoff exceeds number of providers
+                                    logger.debug(f"[{qual}] Rank percentile filter ({percentile}th) keeps all {len(filtered_df)} remaining providers.")
+                            else:
+                                logger.debug(f"[{qual}] Skipping rank percentile filter: no providers left after previous filters.")
+                        else:
+                            logger.warning(f"Invalid min_market_rank_percentile ({min_rank_percentile}), must be between 0 and 100. Skipping.")
+                    except ValueError:
+                        logger.warning(f"Invalid min_market_rank_percentile ({min_rank_percentile}), must be a number. Skipping.")
+                
+                # Use the filtered data frame for selecting gainers/losers
+                if not filtered_df.empty:
+                    gainers = filtered_df.nlargest(3, 'Market Share Growth (%)')
+                    losers = filtered_df.nsmallest(3, 'Market Share Growth (%)')
+                    # Ensure no overlap if fewer than 6 providers
+                    plot_data = pd.concat([losers, gainers]).drop_duplicates().sort_values('Market Share Growth (%)')
+                else:
+                    logger.info(f"[{qual}] No providers left after filtering for gainer/loser plot.")
+                    plot_data = pd.DataFrame() # Ensure plot_data is an empty DataFrame
 
                 if not plot_data.empty:
                     qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30]

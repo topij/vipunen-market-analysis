@@ -68,4 +68,24 @@ excel:
     - name: "Provider's Market"
       description: "Market analysis including all providers"
     - name: "CAGR Analysis"
-      description: "Compound Annual Growth Rate analysis" 
+      description: "Compound Annual Growth Rate analysis"
+
+# Analysis configurations
+analysis:
+  # Minimum total market size for a qualification in the reference year to be included in the overall analysis.
+  # This helps filter out very small or niche qualifications from detailed reports.
+  min_market_size_threshold: 5 
+  
+  # Configuration for the 'Gainers and Losers' visualization
+  gainers_losers:
+    # Minimum market share (%) a provider must have in the reference year to be considered
+    # for the gainers/losers plot. Set to null or remove to disable.
+    # Example: 0.5 means only providers with >= 0.5% market share are included.
+    # min_market_share_threshold: null # Default: no threshold
+    min_market_share_threshold: 0.5 # Default: no threshold
+    
+    # Minimum market rank percentile a provider must be in (based on market share in the reference year)
+    # to be considered for the gainers/losers plot. Set to null or remove to disable.
+    # Example: 90 means only providers in the top 10% (ranks 1, 2, 3...) are included.
+    # Lower rank numbers are better (Rank 1 is the highest market share).
+    min_market_rank_percentile: null # Default: no threshold 

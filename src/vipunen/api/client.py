@@ -258,7 +258,6 @@ class VipunenAPIClient:
         logger.info(f"Total rows to fetch: {max_rows}")
         if max_rows == 0:
              logger.info("No rows to fetch. Creating empty file.")
-             # Create empty file with header? Or just do nothing?
              # Let's create an empty file for consistency.
              try:
                   # Fetch one record to get headers if available, otherwise create empty file

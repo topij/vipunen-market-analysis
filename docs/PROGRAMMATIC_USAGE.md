@@ -43,8 +43,8 @@ logger = logging.getLogger(__name__)
 
 # 1. Define parameters
 data_file = "data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
-institution_name = "Rastor-instituutti"
-institution_variants = ["Rastor-instituutti", "Rastor-instituutti ry", "Rastor", "Rastor Oy"]
+institution_name = "Rastor-instituutti ry"
+institution_variants = ["Rastor-instituutti", "Rastor", "Rastor Oy"]
 institution_short_name = "RI"
 output_dir = "data/reports"
 filter_qual_types = True

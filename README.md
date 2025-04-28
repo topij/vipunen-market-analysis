@@ -1,6 +1,6 @@
 # Finnish Education Market Analysis
 
-This project provides tools for analyzing the Finnish vocational education market using data fetched from the open[Vipunen API](https://vipunen.fi/fi-fi/Sivut/Vipunen-API.aspx). The API is maintained by the [Finnish education administration](https://vipunen.fi/en-gb/). This project focuses on one particular data resource available the API which gives data on students in vocational education and training, as well as completed qualifications, categorized by year, qualification level, and education provider.
+This project provides tools for analyzing the Finnish vocational education market using data fetched from the open [Vipunen API](https://vipunen.fi/fi-fi/Sivut/Vipunen-API.aspx). The API is maintained by the [Finnish education administration](https://vipunen.fi/en-gb/). This project focuses on one particular data resource available the API which gives data on students in vocational education and training, as well as completed qualifications, categorized by year, qualification level, and education provider.
 
 The data analysis toolkit allows institutions to:
 
@@ -67,6 +67,7 @@ For example:
 
 ```bash
 python run_analysis.py --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
+python run_analysis.py --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --variant "Rastor Oy" --short-name "RI"
 ```
 
 See the full [CLI Guide](docs/CLI_GUIDE.md) for all available arguments and options like filtering and specifying output directories.
@@ -115,6 +116,7 @@ excel_file = export_to_excel(
 print(f"Exported results to {excel_file}")
 
 
+
 ```
 
 See the [Programmatic Usage Guide](docs/PROGRAMMATIC_USAGE.md) and the [Market Analysis Features](docs/MARKET_ANALYSIS.md) documentation for more details.
@@ -140,6 +142,7 @@ The analysis typically produces:
 2.  A set of **visualization plots** (PNG images) saved in a `plots` subdirectory, showing trends in volumes, market shares, and growth. See [Visualization Documentation](docs/VISUALIZATION.md).
 3.  Console logs detailing the analysis progress.
 
+Outputs are saved by default under `data/reports/[institution_short_name]_market_analysis_[timestamp]/`.
 Outputs are saved by default under `data/reports/[institution_short_name]_market_analysis_[timestamp]/`.
 
 ## Code Structure

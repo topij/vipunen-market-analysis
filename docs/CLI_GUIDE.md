@@ -20,6 +20,8 @@ python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_t
 
 ## Available Arguments
 
+### `run_analysis.py` Arguments
+
 | Argument | Short Flag | Description | Default Value |
 |----------|------------|-------------|---------------|
 | `--data-file` | `-d` | Path to the input CSV data file | `data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv` |
@@ -30,6 +32,18 @@ python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_t
 | `--use-dummy` | `-u` | Use dummy data instead of loading from file | `False` |
 | `--filter-qual-types` | N/A | Filter data to include only ammattitutkinto and erikoisammattitutkinto | `False` |
 | `--filter-by-institution-quals` | N/A | Filter data to include only qualifications offered by the institution | `False` |
+
+### `fetch_data.py` Arguments
+
+This script fetches the latest data directly from the Vipunen API.
+
+| Argument | Short Flag | Description | Default Value |
+|----------|------------|-------------|---------------|
+| `--dataset` | N/A | Name of the dataset to fetch from the API | Value of `api.default_dataset` in `config.yaml` |
+| `--output-dir`| N/A | Directory to save the output CSV and `.metadata` file | Parent directory of `paths.data` in `config.yaml` (or `data/raw/` if not set) |
+| `--force-download` | N/A | Download data even if the update date hasn't changed | `False` |
+
+See [Data Requirements](DATA_REQUIREMENTS.md#obtaining-data-from-vipunen-api) for more details on data fetching and configuration.
 
 ## Institution Name Variants
 

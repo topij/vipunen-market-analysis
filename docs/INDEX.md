@@ -24,7 +24,8 @@ To get started with Vipunen quickly:
 
 1. Install dependencies with `conda env create -f environment.yaml`
 2. Activate the environment with `conda activate vipunen-analytics`
-3. Run an analysis with `python run_analysis.py --use-dummy --institution "Example Institute"`
+3. **(Optional) Fetch latest data:** Run `python src/scripts/fetch_data.py` to download the default dataset from the Vipunen API. See [Data Requirements](DATA_REQUIREMENTS.md#obtaining-data-from-vipunen-api).
+4. Run an analysis with `python run_analysis.py --use-dummy --institution "Example Institute"` (uses dummy data) or `python run_analysis.py --institution "Your Institution"` (uses fetched/existing data).
 
 See the [Tutorial](TUTORIAL.md) for more detailed instructions.
 

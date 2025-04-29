@@ -10,6 +10,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 import math
+import datetime # Added for date parsing
 
 from ..config.config_loader import get_config
 from ..data.data_loader import load_data
@@ -27,7 +28,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def generate_visualizations(analysis_results: Dict[str, Any], visualizer: EducationVisualizer, analyzer: MarketAnalyzer, config: Dict[str, Any]):
+def generate_visualizations(
+    analysis_results: Dict[str, Any], 
+    visualizer: EducationVisualizer, 
+    analyzer: MarketAnalyzer, 
+    config: Dict[str, Any],
+    data_update_date_str: str # Added parameter for data update date
+):
     """
     Generate all standard visualizations based on analysis results.
 
@@ -36,6 +43,7 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
         visualizer: An initialized EducationVisualizer instance.
         analyzer: The MarketAnalyzer instance (to access min/max years, institution name etc.).
         config: Configuration dictionary.
+        data_update_date_str: String representation of the data update date
     """
     logger.info("Starting visualization generation...")
 
@@ -43,8 +51,8 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
     inst_names = analyzer.institution_names
     min_year = analyzer.min_year
     max_year = analyzer.max_year
-    current_date_str = visualizer.current_date # Get date from visualizer
-    base_caption = TEXT_CONSTANTS["data_source"].format(date=current_date_str)
+    # Use the provided data update date for the caption
+    base_caption = TEXT_CONSTANTS["data_source"].format(date=data_update_date_str)
     
     # Determine last full year for certain plots/filters
     last_full_year = max_year
@@ -86,18 +94,46 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
     if max_year is not None and min_year is not None:
         # Check activity based on last_full_year and the year before it
         years_to_check_activity = [last_full_year]
+        prev_full_year = None
         if last_full_year > min_year:
-            years_to_check_activity.append(last_full_year - 1)
+            prev_full_year = last_full_year - 1
+            years_to_check_activity.append(prev_full_year)
             
-        active_df = detailed_df[
+        # Filter detailed data to the institution and the relevant years
+        inst_recent_df = detailed_df[
             (detailed_df['Provider'].isin(inst_names)) &
             (detailed_df['Year'].isin(years_to_check_activity))
-        ]
-        # Sum volume over the last two years for the institution
-        active_grouped = active_df.groupby('Qualification')['Total Volume'].sum()
-        # --- Use the >= 1 threshold consistent with analyzer --- 
-        active_qualifications = active_grouped[active_grouped >= 1].index.tolist()
-        logger.info(f"Found {len(active_qualifications)} active qualifications (volume >= 1 in {years_to_check_activity}) for {inst_short_name}: {active_qualifications}" )
+        ].copy() # Use .copy() to avoid SettingWithCopyWarning later
+
+        # --- Get configuration for active qualification filtering ---
+        analysis_config = config.get('analysis', {})
+        min_volume_sum_threshold = analysis_config.get('active_qualification_min_volume_sum', 3) # Default to 3 if not set
+
+        # 1. Identify qualifications with sufficient volume over the last two years combined
+        volume_grouped = inst_recent_df.groupby('Qualification')['Total Volume'].sum()
+        quals_with_recent_volume = set(volume_grouped[volume_grouped >= min_volume_sum_threshold].index)
+        logger.debug(f"Found {len(quals_with_recent_volume)} qualifications with summed volume >= {min_volume_sum_threshold} in {years_to_check_activity} for {inst_short_name}.")
+
+        # 2. Identify qualifications where institution had 100% share in BOTH years
+        quals_with_100_share_both_years = set()
+        # Check only if we have two years of data to compare
+        if prev_full_year is not None and not inst_recent_df.empty and 'Market Share (%)' in inst_recent_df.columns:
+            # Ensure Market Share is numeric
+            inst_recent_df['Market Share (%)'] = pd.to_numeric(inst_recent_df['Market Share (%)'], errors='coerce')
+            # Filter for 100% market share (allowing for small floating point inaccuracies)
+            inst_100_share_df = inst_recent_df[inst_recent_df['Market Share (%)'].round(2) == 100.0]
+            # Count how many years each qualification had 100% share
+            share_counts = inst_100_share_df.groupby('Qualification')['Year'].nunique()
+            # Keep only those present in both years (count == 2)
+            quals_with_100_share_both_years = set(share_counts[share_counts == 2].index)
+            if quals_with_100_share_both_years:
+                logger.debug(f"Found {len(quals_with_100_share_both_years)} qualifications with 100% share in both {prev_full_year} and {last_full_year}: {quals_with_100_share_both_years}")
+        
+        # 3. Final active qualifications: Volume > 1 MINUS 100% share in both years
+        active_qualifications_set = quals_with_recent_volume - quals_with_100_share_both_years
+        active_qualifications = sorted(list(active_qualifications_set)) # Convert back to sorted list
+        
+        logger.info(f"Determined {len(active_qualifications)} active qualifications for plots (Summed Volume >= {min_volume_sum_threshold} in {years_to_check_activity} AND <100% share in both years if applicable)." )
     else:
         logger.warning("Could not determine active qualifications due to missing year data.")
         # Fallback: use all qualifications the institution ever offered in the filtered data
@@ -232,6 +268,8 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
                 gainer_loser_config = config.get('analysis', {}).get('gainers_losers', {})
                 min_share_threshold = gainer_loser_config.get('min_market_share_threshold')
                 min_rank_percentile = gainer_loser_config.get('min_market_rank_percentile')
+                
+                filter_notes = [] # Initialize list to store filter descriptions
 
                 original_provider_count = len(latest_qual_df)
                 filtered_df = latest_qual_df.copy() # Start with a copy
@@ -241,7 +279,10 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
                     try:
                         min_share = float(min_share_threshold)
                         if 0 <= min_share <= 100:
+                            original_len = len(filtered_df)
                             filtered_df = filtered_df[filtered_df['Market Share (%)'] >= min_share]
+                            if len(filtered_df) < original_len: # Check if filter actually removed rows
+                                filter_notes.append(f"Markkinaosuus < {min_share}%")
                             logger.debug(f"[{qual}] Applying min market share threshold: >= {min_share}%. Kept {len(filtered_df)}/{original_provider_count} providers.")
                         else:
                             logger.warning(f"Invalid min_market_share_threshold ({min_share_threshold}), must be between 0 and 100. Skipping.")
@@ -254,6 +295,7 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
                         percentile = float(min_rank_percentile)
                         if 0 <= percentile <= 100:
                             if not filtered_df.empty:
+                                original_len = len(filtered_df)
                                 # Calculate the rank cutoff. Lower rank numbers are better (e.g., rank 1 is best).
                                 # We want to keep the top 'percentile' percent.
                                 # Example: 90th percentile -> keep top 10% -> keep ranks <= ceil(total_providers * 0.10)
@@ -269,6 +311,8 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
                                     rank_threshold = sorted_by_rank.iloc[num_providers_to_keep - 1]['Market Rank']
                                     # Keep all providers with rank <= rank_threshold (handles ties)
                                     filtered_df = filtered_df[filtered_df['Market Rank'] <= rank_threshold]
+                                    if len(filtered_df) < original_len: # Check if filter actually removed rows
+                                        filter_notes.append(f"Sijoitus top {100-percentile:.0f}% ulkopuolella")
                                     logger.debug(f"[{qual}] Applying min market rank percentile: {percentile}th (keep top {100-percentile:.1f}% => rank <= {rank_threshold}). Kept {len(filtered_df)} providers.")
                                 else:
                                     # Keep everyone if cutoff exceeds number of providers
@@ -291,6 +335,11 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
                     plot_data = pd.DataFrame() # Ensure plot_data is an empty DataFrame
 
                 if not plot_data.empty:
+                    # Construct caption with potential filtering notes
+                    plot_caption = base_caption + f" Suluissa on toimijan markkinaosuus tutkinnossa vuonna {plot_reference_year}."
+                    if filter_notes:
+                        plot_caption += f" Suodatettu: {'; '.join(filter_notes)}."
+                        
                     qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30]
                     visualizer.create_horizontal_bar_chart(
                         data=plot_data,
@@ -298,7 +347,7 @@ def generate_visualizations(analysis_results: Dict[str, Any], visualizer: Educat
                         y_col='Provider',
                         volume_col='Market Share (%)', # Show current market share in label
                         title=f"{qual}: suurimmat nousijat ja laskijat ({plot_reference_year})",
-                        caption=base_caption + f" Suluissa on toimijan markkinaosuus tutkinnossa vuonna {plot_reference_year}.",
+                        caption=plot_caption, # Use the potentially extended caption
                         filename=f"{inst_short_name}_{qual_filename_part}_gainer_loser_bar",
                         x_label_text="Markkinaosuuden vuosikasvu (%)",
                         y_label_detail_format="({:.1f} %)"
@@ -398,6 +447,24 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     logger.info(f"Loading raw data from {data_file_path}")
     raw_data = load_data(file_path=data_file_path, use_dummy=use_dummy)
     logger.info(f"Loaded {len(raw_data)} rows of data")
+    
+    # --- Extract Data Update Date ---
+    data_update_date_str = datetime.datetime.now().strftime("%d.%m.%Y") # Default to today
+    update_date_col = config.get('columns', {}).get('input', {}).get('update_date', 'tietojoukkoPaivitettyPvm')
+    if not raw_data.empty and update_date_col in raw_data.columns:
+        try:
+            # Get the date string from the first row
+            raw_date_str = str(raw_data[update_date_col].iloc[0])
+            # Attempt to parse the date (assuming common formats like YYYY-MM-DD HH:MM:SS or YYYY-MM-DD)
+            # pd.to_datetime is flexible
+            parsed_date = pd.to_datetime(raw_date_str)
+            data_update_date_str = parsed_date.strftime("%d.%m.%Y")
+            logger.info(f"Using data update date from column '{update_date_col}': {data_update_date_str}")
+        except Exception as date_err:
+            logger.warning(f"Could not parse date from column '{update_date_col}': {date_err}. Falling back to current date.")
+    else:
+        logger.warning(f"Update date column '{update_date_col}' not found or data is empty. Falling back to current date.")
+    # --- End Extract Data Update Date ---
     
     # Step 4: Clean and prepare the data
     logger.info("Cleaning and preparing the data")
@@ -504,7 +571,14 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             logger.info("Initializing visualizer...")
             # Pass the full path for plots dir to visualizer
             visualizer = EducationVisualizer(output_dir=plots_dir)
-            generate_visualizations(analysis_results, visualizer, analyzer, config)
+            # Pass the extracted data update date
+            generate_visualizations(
+                analysis_results=analysis_results, 
+                visualizer=visualizer, 
+                analyzer=analyzer, 
+                config=config, 
+                data_update_date_str=data_update_date_str 
+            )
         except Exception as vis_error:
             logger.error(f"Error during visualization generation: {vis_error}", exc_info=True)
             # Continue without visualizations if they fail

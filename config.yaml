@@ -9,6 +9,7 @@ columns:
     provider: 'koulutuksenJarjestaja'
     subcontractor: 'hankintakoulutuksenJarjestaja'
     volume: 'nettoopiskelijamaaraLkm'
+    update_date: 'tietojoukkoPaivitettyPvm'
   
   output:
     year: 'Year'
@@ -75,6 +76,12 @@ analysis:
   # Minimum total market size for a qualification in the reference year to be included in the overall analysis.
   # This helps filter out very small or niche qualifications from detailed reports.
   min_market_size_threshold: 5 
+  
+  # Minimum summed volume the institution must have across the last two full years 
+  # for a qualification to be considered 'active' for visualization filtering.
+  # Set to 1 to include any qualification with any volume in the last two years.
+  # Set to 3 to require volume > 2 summed across the two years.
+  active_qualification_min_volume_sum: 3 # Default: 3 Requires summed volume > 2
   
   # Configuration for the 'Gainers and Losers' visualization
   gainers_losers:

@@ -148,11 +148,22 @@ See [Data Requirements](docs/DATA_REQUIREMENTS.md) for full details.
 The analysis typically produces:
 
 1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
-2.  A set of **visualization plots** (PNG images) saved in a `plots` subdirectory, showing trends in volumes, market shares, and growth. See [Visualization Documentation](docs/VISUALIZATION.md).
+2.  A **PDF report (`visualizations.pdf`)** saved in a `plots` subdirectory within the main output folder. This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
+    *   Total student volumes over time (Stacked Area Chart)
+    *   Market share evolution for top competitors within active qualifications (Line Charts - one per qualification)
+    *   Institution's market share across active qualifications over time (Heatmap)
+    *   Year-over-year market growth/decline for active qualifications (Horizontal Bar Chart)
+    *   Market share gainers/losers for active qualifications (Horizontal Bar Charts - one per qualification)
+    *   Treemap showing institution's market share vs. qualification size for the reference year.
+    *   *(Note: The "Heatmap with Marginals" plot is currently excluded from the PDF output.)*
 3.  Console logs detailing the analysis progress.
 
-Outputs are saved by default under `data/reports/[institution_short_name]_market_analysis_[timestamp]/`.
-Outputs are saved by default under `data/reports/[institution_short_name]_market_analysis_[timestamp]/`.
+The main output folder is named based on the institution's short name (e.g., `education_market_ri`).
+- The Excel file is saved in this folder with a timestamp.
+- The PDF report is saved within a `plots` subfolder inside the main output folder.
+Outputs are saved by default under `data/reports/`. For example:
+`data/reports/education_market_ri/ri_market_analysis_[timestamp].xlsx` and 
+`data/reports/education_market_ri/plots/visualizations.pdf`
 
 ## Code Structure
 

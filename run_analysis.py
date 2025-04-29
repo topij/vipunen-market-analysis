@@ -10,9 +10,13 @@ import logging
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+# Silence overly verbose loggers
+logging.getLogger("matplotlib").setLevel(logging.WARNING)
+logging.getLogger("FileUtils").setLevel(logging.WARNING) # Also silence FileUtils for now
+
 logger = logging.getLogger(__name__)
 
 def check_dependencies():

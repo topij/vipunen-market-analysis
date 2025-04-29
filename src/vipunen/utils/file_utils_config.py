@@ -64,7 +64,7 @@ def get_file_utils(project_root: Optional[str] = None) -> FileUtils:
         # Initialize FileUtils with direct configuration
         _file_utils_instance = FileUtils(
             project_root=project_root,
-            logging_level=logging.INFO,
+            logging_level=logging.WARNING,
             config_override={
                 "include_timestamp": True,
                 "csv_delimiter": ";",

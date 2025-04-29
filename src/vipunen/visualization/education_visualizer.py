@@ -9,6 +9,7 @@ from matplotlib import ticker
 from matplotlib.colors import LinearSegmentedColormap, to_rgba
 import squarify  # For treemap plots
 import textwrap
+import warnings # Add import
 
 # Color palette definition (using the brand colors from the style sheets)
 COLOR_PALETTES = {
@@ -457,7 +458,7 @@ class EducationVisualizer:
             spine.set_visible(False)
 
         # --- Plot Right Bar Plot (Latest Year Volume) ---
-        sns.barplot(x=right_data.values, y=right_data.index, ax=ax_right, orient='h', palette=bar_palette)
+        sns.barplot(x=right_data.values, y=right_data.index, ax=ax_right, orient='h', palette=bar_palette, hue=right_data.index, legend=False)
         # Styling
         ax_right.tick_params(axis='y', left=False, labelleft=False) # Hide y-axis labels/ticks
         ax_right.tick_params(axis='x', length=0)
@@ -475,7 +476,14 @@ class EducationVisualizer:
             fig.text(0.05, 0.01, caption, fontsize=9, color='#555555', ha='left')
 
         # Adjust layout slightly if needed
-        fig.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to prevent caption/title overlap
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore", 
+                message="This figure includes Axes that are not compatible with tight_layout", 
+                category=UserWarning,
+                module=".*education_visualizer.*" # Be more specific if needed
+            )
+            fig.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to prevent caption/title overlap
 
         # Save if filename provided
         if filename:

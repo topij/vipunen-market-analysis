@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 import math
 import datetime # Added for date parsing
+import matplotlib.pyplot as plt # Add import
 
 from ..config.config_loader import get_config
 from ..data.data_loader import load_data
@@ -22,10 +23,11 @@ from .argument_parser import parse_arguments, get_institution_variants
 from ..visualization.education_visualizer import EducationVisualizer, COLOR_PALETTES, TEXT_CONSTANTS
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# Comment out the basicConfig here as it's handled in run_analysis.py
+# logging.basicConfig(
+#     level=logging.INFO,
+#     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+# )
 logger = logging.getLogger(__name__)
 
 def generate_visualizations(
@@ -160,7 +162,7 @@ def generate_visualizations(
             
             if not plot_data.empty:
                 qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30] # Create safe filename part
-                visualizer.create_line_chart(
+                fig, _ = visualizer.create_line_chart( # Capture fig
                     data=plot_data,
                     x_col=plot_data.index,
                     y_cols=top_m_providers,
@@ -170,48 +172,92 @@ def generate_visualizations(
                     caption=base_caption,
                     filename=f"{inst_short_name}_{qual_filename_part}_market_share_lines"
                 )
+                plt.close(fig) # Close figure after saving
         except Exception as e:
             logger.error(f"Failed to generate Market Share line plot for {qual}: {e}", exc_info=True)
 
     # --- Plot 3: Heatmap (Institution's Share) ---
     try:
         logger.info("Generating Institution Market Share Heatmap...")
-        inst_share_df = detailed_df[detailed_df['Provider'].isin(inst_names)]
-        # Check for duplicates before pivoting
-        duplicates = inst_share_df.duplicated(subset=['Qualification', 'Year'], keep=False)
-        if duplicates.any():
-            logger.warning(f"Found duplicate Qualification/Year entries for {inst_short_name}. Dropping duplicates before pivoting heatmap.")
-            logger.debug(f"Duplicate rows:\n{inst_share_df[duplicates]}")
-            inst_share_df = inst_share_df.drop_duplicates(subset=['Qualification', 'Year'], keep='first')
+        inst_share_df_raw = detailed_df[detailed_df['Provider'].isin(inst_names)]
+        
+        # --- Aggregate data across institution variants ---
+        if not inst_share_df_raw.empty:
+            # Define aggregation logic
+            agg_logic = {
+                'Provider Volume (Main)': 'sum',
+                'Provider Volume (Subcontractor)': 'sum',
+                'Total Volume': 'sum',
+                'Market Total': 'first', # Should be the same for all rows in the group
+                # Keep other potentially relevant columns (take the first instance)
+                'Provider': 'first', # Keep one provider name for reference
+                'Market Share (%)': 'first', # Placeholder, will recalculate
+                'Market Rank': 'first', # Placeholder, maybe min() is better?
+                'Market Share Growth (%)': 'first', # Placeholder 
+                'Market Gainer Rank': 'first' # Placeholder
+            }
+            # Filter agg_logic to columns actually present in the dataframe
+            agg_logic = {k: v for k, v in agg_logic.items() if k in inst_share_df_raw.columns}
+
+            logger.debug(f"Aggregating data for {inst_short_name} across variants...")
+            inst_share_df_agg = inst_share_df_raw.groupby(['Year', 'Qualification'], as_index=False).agg(agg_logic)
+            
+            # Recalculate Market Share based on aggregated volumes
+            if 'Total Volume' in inst_share_df_agg.columns and 'Market Total' in inst_share_df_agg.columns:
+                # Avoid division by zero or NaN Market Total
+                valid_market_total = inst_share_df_agg['Market Total'] > 0
+                inst_share_df_agg['Market Share (%)'] = 0.0 # Initialize
+                inst_share_df_agg.loc[valid_market_total, 'Market Share (%)'] = \
+                    (inst_share_df_agg.loc[valid_market_total, 'Total Volume'] / inst_share_df_agg.loc[valid_market_total, 'Market Total'] * 100)
+            
+            inst_share_df = inst_share_df_agg # Use the aggregated dataframe
+            logger.debug(f"Aggregation complete. Shape before: {inst_share_df_raw.shape}, after: {inst_share_df.shape}")
+            
+        else:
+            inst_share_df = inst_share_df_raw # Use the empty dataframe if no data found
+
+        # --- End Aggregation ---
+
+        # Check for duplicates before pivoting (SHOULD NOT HAPPEN after aggregation)
+        # duplicates = inst_share_df.duplicated(subset=['Qualification', 'Year'], keep=False)
+        # if duplicates.any():
+        #     logger.warning(f"Found duplicate Qualification/Year entries for {inst_short_name} AFTER AGGREGATION. This should not happen. Dropping duplicates.")
+        #     logger.debug(f"Duplicate rows:\n{inst_share_df[duplicates]}")
+        #     inst_share_df = inst_share_df.drop_duplicates(subset=['Qualification', 'Year'], keep='first')
             
         heatmap_data = inst_share_df.pivot(index='Qualification', columns='Year', values='Market Share (%)')
         # Filter heatmap data to only active qualifications
         heatmap_data = heatmap_data[heatmap_data.index.isin(active_qualifications)]
         
         if not heatmap_data.empty:
-            visualizer.create_heatmap(
+            # Pass the aggregated, recalculated heatmap data
+            fig, _ = visualizer.create_heatmap(
                 data=heatmap_data,
                 title=f"{inst_short_name}: markkinaosuus tutkinnoittain",
                 caption=base_caption,
                 filename=f"{inst_short_name}_share_heatmap",
                 cmap='Blues' # Example: Use Blues colormap
             )
+            plt.close(fig) # Close figure
     except Exception as e:
         logger.error(f"Failed to generate Institution Share heatmap: {e}", exc_info=True)
 
     # --- Plot 4: Heatmap with Marginals ---
     overall_volume_series = analysis_results.get('overall_total_market_volume')
+    # Use the aggregated inst_share_df for the heatmap data here as well
     if overall_volume_series is not None and not overall_volume_series.empty and 'heatmap_data' in locals() and not heatmap_data.empty:
         try:
             logger.info("Generating Market Share Heatmap with Marginals...")
             # Prepare right data (latest year market total per qual)
+            # Note: Market Total comes from detailed_df, not the aggregated one
             latest_detailed = detailed_df[detailed_df['Year'] == plot_reference_year]
             right_data = latest_detailed.drop_duplicates(subset='Qualification').set_index('Qualification')['Market Total']
             # Filter right_data to only active qualifications
             right_data = right_data[right_data.index.isin(active_qualifications)]
 
-            visualizer.create_heatmap_with_marginals(
-                heatmap_data=heatmap_data, # From plot 3 (already filtered)
+            # Use the heatmap_data created *after* aggregation
+            fig = visualizer.create_heatmap_with_marginals(
+                heatmap_data=heatmap_data, 
                 top_data=overall_volume_series,
                 right_data=right_data,
                 title=f"{inst_short_name}: markkinaosuus vs markkinakoko ({plot_reference_year})",
@@ -221,6 +267,7 @@ def generate_visualizations(
                 filename=f"{inst_short_name}_share_heatmap_marginals",
                 cmap='Blues'
             )
+            plt.close(fig) # Close figure
         except Exception as e:
             logger.error(f"Failed to generate Heatmap with Marginals: {e}", exc_info=True)
     else:
@@ -341,7 +388,7 @@ def generate_visualizations(
                         plot_caption += f" Suodatettu: {'; '.join(filter_notes)}."
                         
                     qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30]
-                    visualizer.create_horizontal_bar_chart(
+                    fig, _ = visualizer.create_horizontal_bar_chart( # Capture fig
                         data=plot_data,
                         x_col='Market Share Growth (%)',
                         y_col='Provider',
@@ -352,6 +399,7 @@ def generate_visualizations(
                         x_label_text="Markkinaosuuden vuosikasvu (%)",
                         y_label_detail_format="({:.1f} %)"
                     )
+                    plt.close(fig) # Close figure after saving
         except Exception as e:
             logger.error(f"Failed to generate Gainer/Loser plot for {qual}: {e}", exc_info=True)
 
@@ -413,6 +461,10 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Dictionary with analysis results
     """
+    # Temporarily set this module's logger to DEBUG to see duplicate rows
+    # original_level = logger.getEffectiveLevel()
+    # logger.setLevel(logging.DEBUG) # REMOVE
+    
     # Parse arguments if not provided
     if args is None:
         # Pass empty list to prevent parsing pytest args from sys.argv
@@ -596,6 +648,9 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Note: We allow the function to return normally, but with empty results
 
     # --- End Analysis Block ---
+    
+    # Restore original logging level before returning
+    # logger.setLevel(original_level) # REMOVE
 
     # Return results (potentially empty if error occurred, now includes full analysis dict)
     return {

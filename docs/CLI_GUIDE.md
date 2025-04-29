@@ -113,10 +113,10 @@ A complete example with multiple options:
 
 ```bash
 python run_analysis.py \
-  --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv \
+  --data-file amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv \
   --institution "Rastor-instituutti ry" \
   --short-name "RI" \
-  --variant "Rastor-instituutti ry" \
+  --variant "Rastor Oy" \
   --variant "Rastor" \
   --output-dir "reports/rastor_analysis_2023" \
   --filter-qual-types \

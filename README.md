@@ -97,7 +97,7 @@ from src.vipunen.analysis.market_analyzer import MarketAnalyzer
 from src.vipunen.export.excel_exporter import export_to_excel # Example exporter
 
 # Configuration (example)
-data_path = "data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
+data_path = "amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
 institution_name = "Rastor-instituutti ry"
 institution_variants = ["Rastor-instituutti ry", "Rastor Oy"]
 institution_short_name = "RI"

@@ -15,7 +15,7 @@ python run_analysis.py --data-file <path_to_data> --institution <institution_nam
 For example:
 
 ```bash
-python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti" --short-name "RI"
+python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv --institution "Rastor-instituutti ry" --short-name "RI"
 ```
 
 ## Available Arguments
@@ -45,12 +45,29 @@ This script fetches the latest data directly from the Vipunen API.
 
 See [Data Requirements](DATA_REQUIREMENTS.md#obtaining-data-from-vipunen-api) for more details on data fetching and configuration.
 
+## Configuration File (`config.yaml`)
+
+While many options are available via command-line arguments, further customization, especially related to analysis thresholds and input/output mappings, is controlled via the `config.yaml` file located in the project root.
+
+Key configuration options relevant to the analysis workflow include:
+
+*   `columns`: Defines the mapping between expected column names (like `year`, `qualification`, `provider`, `volume`, `update_date`) and the actual column names in your input CSV file.
+    *   `columns.input.update_date`: Specifies the column in the raw data containing the data update timestamp (e.g., `tietojoukkoPaivitettyPvm`), which is used in plot captions.
+*   `analysis`:
+    *   `min_market_size_threshold`: Minimum total market size for a qualification in the reference year to be included in the `detailed_providers_market` calculation and output sheet.
+    *   `active_qualification_min_volume_sum`: Minimum summed volume the target institution must have across the last two full years for a qualification to be considered "active" for plot filtering (e.g., Heatmap, Line charts). Default is 3 (requiring summed volume > 2).
+    *   `gainers_losers`:
+        *   `min_market_share_threshold`: Optional. Minimum market share (%) a provider needs in the reference year to be included in the Gainers/Losers plot. Defaults to `null` (disabled).
+        *   `min_market_rank_percentile`: Optional. Minimum market rank percentile (based on share) a provider needs in the reference year to be included in the Gainers/Losers plot. Defaults to `null` (disabled).
+
+Always refer to the comments within `config.yaml` for the most up-to-date details on available settings.
+
 ## Institution Name Variants
 
 Educational institutions often have variants of their name in the data. You can specify multiple name variants to ensure all data is captured:
 
 ```bash
-python run_analysis.py --institution "Rastor-instituutti" --variant "Rastor-instituutti ry" --variant "Rastor" --variant "Rastor Oy"
+python run_analysis.py --institution "Rastor-instituutti ry" --variant "Rastor Oy"
 ```
 
 ## Data Filtering Options
@@ -60,7 +77,7 @@ python run_analysis.py --institution "Rastor-instituutti" --variant "Rastor-inst
 To analyze only ammattitutkinto and erikoisammattitutkinto qualifications:
 
 ```bash
-python run_analysis.py --institution "Rastor-instituutti" --filter-qual-types
+python run_analysis.py --institution "Rastor-instituutti ry" --filter-qual-types
 ```
 
 ### Filter by Institution's Qualifications
@@ -68,7 +85,7 @@ python run_analysis.py --institution "Rastor-instituutti" --filter-qual-types
 To focus only on qualifications that the institution offers:
 
 ```bash
-python run_analysis.py --institution "Rastor-instituutti" --filter-by-institution-quals
+python run_analysis.py --institution "Rastor-instituutti ry" --filter-by-institution-quals
 ```
 
 ## Using Dummy Data
@@ -86,7 +103,7 @@ By default, outputs are saved to `data/reports/[institution_short_name]/`. Withi
 You can specify a different *base* output directory:
 
 ```bash
-python run_analysis.py --institution "Rastor-instituutti" --output-dir "my_analysis_results"
+python run_analysis.py --institution "Rastor-instituutti ry" --output-dir "my_analysis_results"
 ```
 This will create `my_analysis_results/education_market_ri/` etc.
 
@@ -97,7 +114,7 @@ A complete example with multiple options:
 ```bash
 python run_analysis.py \
   --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv \
-  --institution "Rastor-instituutti" \
+  --institution "Rastor-instituutti ry" \
   --short-name "RI" \
   --variant "Rastor-instituutti ry" \
   --variant "Rastor" \

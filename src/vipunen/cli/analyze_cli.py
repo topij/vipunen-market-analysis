@@ -172,7 +172,7 @@ def generate_visualizations(
                     caption=base_caption,
                     filename=f"{inst_short_name}_{qual_filename_part}_market_share_lines"
                 )
-                plt.close(fig) # Close figure after saving
+                # plt.close(fig) # Close figure after saving - Removed for PDF output
         except Exception as e:
             logger.error(f"Failed to generate Market Share line plot for {qual}: {e}", exc_info=True)
 
@@ -238,40 +238,48 @@ def generate_visualizations(
                 filename=f"{inst_short_name}_share_heatmap",
                 cmap='Blues' # Example: Use Blues colormap
             )
-            plt.close(fig) # Close figure
+            # plt.close(fig) # Close figure - Removed for PDF output
     except Exception as e:
         logger.error(f"Failed to generate Institution Share heatmap: {e}", exc_info=True)
 
-    # --- Plot 4: Heatmap with Marginals ---
-    overall_volume_series = analysis_results.get('overall_total_market_volume')
-    # Use the aggregated inst_share_df for the heatmap data here as well
-    if overall_volume_series is not None and not overall_volume_series.empty and 'heatmap_data' in locals() and not heatmap_data.empty:
-        try:
-            logger.info("Generating Market Share Heatmap with Marginals...")
-            # Prepare right data (latest year market total per qual)
-            # Note: Market Total comes from detailed_df, not the aggregated one
-            latest_detailed = detailed_df[detailed_df['Year'] == plot_reference_year]
-            right_data = latest_detailed.drop_duplicates(subset='Qualification').set_index('Qualification')['Market Total']
-            # Filter right_data to only active qualifications
-            right_data = right_data[right_data.index.isin(active_qualifications)]
-
-            # Use the heatmap_data created *after* aggregation
-            fig = visualizer.create_heatmap_with_marginals(
-                heatmap_data=heatmap_data, 
-                top_data=overall_volume_series,
-                right_data=right_data,
-                title=f"{inst_short_name}: markkinaosuus vs markkinakoko ({plot_reference_year})",
-                top_title=f"Koko markkina (kaikki tutkinnot, {min_year}-{max_year})",
-                right_title=f"Tutkinnon markkinakoko ({plot_reference_year})",
-                caption=base_caption,
-                filename=f"{inst_short_name}_share_heatmap_marginals",
-                cmap='Blues'
-            )
-            plt.close(fig) # Close figure
-        except Exception as e:
-            logger.error(f"Failed to generate Heatmap with Marginals: {e}", exc_info=True)
-    else:
-        logger.warning("Skipping Heatmap with Marginals: Data not available.")
+    # --- Plot 4: Heatmap with Marginals --- COMMENTED OUT
+    # overall_volume_series = analysis_results.get('overall_total_market_volume')
+    # # Use the aggregated inst_share_df for the heatmap data here as well
+    # if overall_volume_series is not None and not overall_volume_series.empty and 'heatmap_data' in locals() and not heatmap_data.empty:
+    #     try:
+    #         logger.info("Generating Market Share Heatmap with Marginals...")
+    #         # Prepare right data (latest year market total per qual)
+    #         # Note: Market Total comes from detailed_df, not the aggregated one
+    #         latest_detailed = detailed_df[detailed_df['Year'] == plot_reference_year]
+    #         right_data = latest_detailed.drop_duplicates(subset='Qualification').set_index('Qualification')['Market Total']
+    #         # Filter right_data to only active qualifications
+    #         right_data = right_data[right_data.index.isin(active_qualifications)]
+    # 
+    #         # --- Apply RI-specific adjustment for 'Liiketoiminnan PT' --- 
+    #         if analyzer.institution_short_name == "RI" and 'Liiketoiminnan PT' in right_data.index:
+    #             logger.info("Applying RI-specific adjustment: Halving 'Liiketoiminnan PT' market size for marginals plot.")
+    #             right_data.loc['Liiketoiminnan PT'] = right_data.loc['Liiketoiminnan PT'] / 2
+    #         # --- End RI Adjustment --- 
+    # 
+    #         # Use the heatmap_data created *after* aggregation
+    #         fig = visualizer.create_heatmap_with_marginals(
+    #             heatmap_data=heatmap_data, 
+    #             top_data=overall_volume_series,
+    #             right_data=right_data,
+    #             title=f"{inst_short_name}: markkinaosuus vs markkinakoko ({plot_reference_year})",
+    #             top_title=f"Koko markkina (kaikki tutkinnot, {min_year}-{max_year})",
+    #             right_title=f"Tutkinnon markkinakoko ({plot_reference_year})",
+    #             # caption=base_caption,
+    #             caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else ""),
+    # 
+    #             filename=f"{inst_short_name}_share_heatmap_marginals",
+    #             cmap='Blues'
+    #         )
+    #         # plt.close(fig) # Close figure - Removed for PDF output
+    #     except Exception as e:
+    #         logger.error(f"Failed to generate Heatmap with Marginals: {e}", exc_info=True)
+    # else:
+    #     logger.warning("Skipping Heatmap with Marginals: Data not available.")
         
     # --- Plot 5: Horizontal Bar (Qualification Growth) ---
     qual_growth_df = analysis_results.get('qualification_market_yoy_growth')
@@ -285,7 +293,8 @@ def generate_visualizations(
                 
             if not growth_ref_year.empty:
                 sorted_growth = growth_ref_year.sort_values('Market Total YoY Growth (%)')
-                visualizer.create_horizontal_bar_chart(
+                # Capture fig, ax return values
+                fig, ax = visualizer.create_horizontal_bar_chart(
                     data=sorted_growth,
                     x_col='Market Total YoY Growth (%)',
                     y_col='Qualification',
@@ -296,6 +305,7 @@ def generate_visualizations(
                     x_label_text="Tutkinnon markkinakasvu (%)",
                     y_label_detail_format="({:.0f})" # Format volume as integer
                 )
+                # plt.close(fig) # Close figure - Removed for PDF output
         except Exception as e:
             logger.error(f"Failed to generate Qualification Growth plot: {e}", exc_info=True)
     else:
@@ -399,57 +409,63 @@ def generate_visualizations(
                         x_label_text="Markkinaosuuden vuosikasvu (%)",
                         y_label_detail_format="({:.1f} %)"
                     )
-                    plt.close(fig) # Close figure after saving
+                    # plt.close(fig) # Close figure after saving - Removed for PDF output
         except Exception as e:
             logger.error(f"Failed to generate Gainer/Loser plot for {qual}: {e}", exc_info=True)
 
     # --- Plot 7: Treemap ---
-    # inst_latest_df = detailed_df[(detailed_df['Provider'].isin(inst_names)) & (detailed_df['Year'] == max_year)]
-    # if inst_latest_df is not None and not inst_latest_df.empty:
-    #     try:
-    #         logger.info("Generating Market Share Treemap...")
-    #         # Use data from plot_reference_year for the treemap
-    #         treemap_base_data = detailed_df[
-    #             (detailed_df['Provider'].isin(inst_names)) &
-    #             (detailed_df['Year'] == plot_reference_year)
-    #         ].copy()
+    inst_latest_df = detailed_df[(detailed_df['Provider'].isin(inst_names)) & (detailed_df['Year'] == plot_reference_year)]
+    if inst_latest_df is not None and not inst_latest_df.empty:
+        try:
+            logger.info("Generating Market Share Treemap...")
+            # Use data from plot_reference_year for the treemap
+            treemap_base_data = detailed_df[
+                (detailed_df['Provider'].isin(inst_names)) &
+                (detailed_df['Year'] == plot_reference_year)
+            ].copy()
 
-    #         # Filter for active qualifications
-    #         treemap_base_data = treemap_base_data[treemap_base_data['Qualification'].isin(active_qualifications)]
+            # Filter for active qualifications
+            treemap_base_data = treemap_base_data[treemap_base_data['Qualification'].isin(active_qualifications)]
             
-    #         # Ensure Market Total is present for sizing
-    #         if 'Market Total' not in treemap_base_data.columns:
-    #              # Merge market total if missing (might happen if filtered differently)
-    #              ref_year_totals = detailed_df[detailed_df['Year'] == plot_reference_year][['Qualification', 'Market Total']].drop_duplicates()
-    #              treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on='Qualification', how='left')
+            # Ensure Market Total is present for sizing
+            if 'Market Total' not in treemap_base_data.columns:
+                 # Merge market total if missing (might happen if filtered differently)
+                 ref_year_totals = detailed_df[detailed_df['Year'] == plot_reference_year][['Qualification', 'Market Total']].drop_duplicates()
+                 treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on='Qualification', how='left')
             
-    #         # Apply RI-specific adjustment for 'Liiketoiminnan PT'
-    #         if analyzer.institution_short_name == "RI":
-    #             pt_index = treemap_base_data[treemap_base_data['Qualification'] == 'Liiketoiminnan PT'].index
-    #             if not pt_index.empty:
-    #                 logger.info("Applying RI-specific adjustment: Halving Market Total for Liiketoiminnan PT in Treemap.")
-    #                 treemap_base_data.loc[pt_index, 'Market Total'] = treemap_base_data.loc[pt_index, 'Market Total'] / 2
+            # Apply RI-specific adjustment for 'Liiketoiminnan PT'
+            if analyzer.institution_short_name == "RI":
+                pt_index = treemap_base_data[treemap_base_data['Qualification'] == 'Liiketoiminnan PT'].index
+                if not pt_index.empty:
+                    logger.info("Applying RI-specific adjustment: Halving Market Total for Liiketoiminnan PT in Treemap.")
+                    treemap_base_data.loc[pt_index, 'Market Total'] = treemap_base_data.loc[pt_index, 'Market Total'] / 2
                  
-    #         plot_data = treemap_base_data.sort_values('Market Total', ascending=False)
+            # Ensure Market Total is not zero or NaN before proceeding
+            treemap_data = treemap_base_data[treemap_base_data['Market Total'].fillna(0) > 0].copy()
             
-    #         # Check required columns exist before plotting
-    #         required_cols = ['Market Total', 'Qualification', 'Market Share (%)']
-    #         if not plot_data.empty and all(col in plot_data.columns for col in required_cols) and not plot_data[required_cols].isnull().any().any():
-    #              visualizer.create_treemap(
-    #                  data=plot_data,
-    #                  value_col='Market Total', # Use adjusted value
-    #                  label_col='Qualification',
-    #                  detail_col='Market Share (%)', # Display institution's market share
-    #                  title=f"{inst_short_name}: markkinaosuus, koko tutkintomarkkina ({plot_reference_year})",
-    #                  caption=base_caption + " Laatikon koko kuvaa tutkinnon markkinakokoa.",
-    #                  filename=f"{inst_short_name}_treemap"
-    #              )
-    #     except Exception as e:
-    #         logger.error(f"Failed to generate Treemap: {e}", exc_info=True)
-    # else:
-    #     logger.warning("Skipping Treemap: Data not available.")
+            if not treemap_data.empty:
+                # Sort by Market Total descending for stable treemap layout
+                treemap_data = treemap_data.sort_values('Market Total', ascending=False)
+                
+                fig, _ = visualizer.create_treemap(
+                    data=treemap_data,
+                    value_col='Market Total', # Size by Market Total
+                    label_col='Qualification', 
+                    detail_col='Market Share (%)', # Show institution's share inside
+                    title=f"{inst_short_name}: Tutkintojen markkinaosuudet ({plot_reference_year})",
+                    caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else ""),
+                    filename=f"{inst_short_name}_qualification_treemap"
+                )
+                # plt.close(fig) # Close figure - Keep commented for PDF output
+        except Exception as e:
+            logger.error(f"Failed to generate Treemap plot: {e}", exc_info=True)
+    else:
+        logger.warning("Skipping Treemap plot: Data not available for the reference year.")
 
-    logger.info("...visualization generation complete.")
+    logger.info("Visualization generation completed.")
+
+    # --- Close the PDF file if it was opened ---
+    visualizer.close_pdf()
 
 def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
@@ -622,7 +638,10 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         try:
             logger.info("Initializing visualizer...")
             # Pass the full path for plots dir to visualizer
-            visualizer = EducationVisualizer(output_dir=plots_dir)
+            visualizer = EducationVisualizer(
+                output_dir=plots_dir, 
+                output_format='pdf'
+            )
             # Pass the extracted data update date
             generate_visualizations(
                 analysis_results=analysis_results, 

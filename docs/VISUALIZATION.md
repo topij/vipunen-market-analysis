@@ -17,7 +17,7 @@ The CLI script (`src/vipunen/cli/analyze_cli.py`) uses this class in its `genera
 | `create_heatmap`                  | Heatmap showing the target institution's market share across qualifications and years. | Filtered to show only active qualifications for the institution.                                                      |
 | `create_heatmap_with_marginals` | Combines the institution share heatmap with marginal plots for total market volume.    | Filtered to show only active qualifications for the institution.                                                      |
 | `create_horizontal_bar_chart`   | Horizontal bar chart used for Qualification Growth and Provider Gainer/Loser plots.  | **Styling**: Labels appear to the right of bars; spines and horizontal grid removed; vertical line at 0 if needed.<br>**Filtering**: Gainers/Losers plot can be filtered via `config.yaml`.<br>**Captions**: Gainers/Losers caption indicates if filtering was applied. |
-| `create_treemap`                  | Treemap visualizing market share vs. market size for the institution's qualifications. | (Currently commented out in `analyze_cli.py`)                                                                         |
+| `create_treemap`                  | Treemap visualizing market share vs. market size for the institution's qualifications. | Static plot using Matplotlib/Squarify. Filtered to active qualifications.                                                |
 
 ## Visualization Generation in `analyze_cli.py`
 

@@ -67,20 +67,32 @@ import pandas as pd
 import logging
 from src.vipunen.data.data_loader import load_data
 from src.vipunen.data.data_processor import clean_and_prepare_data
-from src.vipunen.analysis.education_market import EducationMarketAnalyzer
-from src.vipunen.utils.file_utils_config import get_file_utils
-from FileUtils import OutputFileType
+# Use the core MarketAnalyzer
+from src.vipunen.analysis.market_analyzer import MarketAnalyzer 
+# Use the standard Excel export helper
+from src.vipunen.export.excel_exporter import export_to_excel 
+# Import config loader
+from src.vipunen.config.config_loader import get_config
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Define parameters
-data_file = "data/raw/your_data_file.csv"
-institution_variants = ["Your Institution", "YI Oy", "YI Ltd"]
-institution_short_name = "YI"
+# 1. Load Configuration
+config = get_config()
 
-# Load data
+# 2. Define parameters (can be overridden or taken from config)
+data_file = config['paths']['data']
+# Use default institution from config for this example
+institution_key = 'default' 
+institution_variants = config['institutions'][institution_key].get('variants', []) + [config['institutions'][institution_key]['name']]
+institution_short_name = config['institutions'][institution_key]['short_name']
+qual_types_to_filter = config.get('qualification_types', []) # Example: use types from config
+min_market_size = config.get('analysis', {}).get('min_market_size_threshold', 5)
+output_dir = Path(config['paths']['output']) / f"education_market_{institution_short_name.lower()}"
+output_dir.mkdir(parents=True, exist_ok=True) # Ensure output dir exists
+
+# 3. Load data
 try:
     raw_data = load_data(data_file)
     logger.info(f"Loaded {len(raw_data)} rows from {data_file}")
@@ -88,52 +100,62 @@ except FileNotFoundError:
     logger.error(f"Data file not found: {data_file}")
     raise
 
-# Clean and prepare data
+# 4. Clean and prepare data
 df_clean = clean_and_prepare_data(raw_data, institution_names=institution_variants)
 logger.info(f"Cleaned data has {len(df_clean)} rows")
 
-# Filter to include only ammattitutkinto and erikoisammattitutkinto
-df_filtered = df_clean[df_clean["tutkintotyyppi"].isin(["Ammattitutkinnot", "Erikoisammattitutkinnot"])]
-logger.info(f"Filtered data has {len(df_filtered)} rows")
+# 5. Filter data (Example: by qualification type from config)
+if qual_types_to_filter:
+    df_filtered = df_clean[df_clean["tutkintotyyppi"].isin(qual_types_to_filter)]
+    logger.info(f"Filtered data to types {qual_types_to_filter}. Rows remaining: {len(df_filtered)}")
+else:
+    df_filtered = df_clean
+    logger.info("No qualification type filter applied.")
+    
+# 6. Create and run analyzer
+logger.info("Initializing MarketAnalyzer...")
+analyzer = MarketAnalyzer(df_filtered, cfg=config) # Pass config
+analyzer.institution_names = institution_variants
+analyzer.institution_short_name = institution_short_name
 
-# Create analyzer
-analyzer = EducationMarketAnalyzer(
-    data=df_filtered,
-    institution_names=institution_variants,
-    filter_degree_types=True
-)
+logger.info("Running analysis...")
+analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size)
+logger.info("Analysis complete.")
 
-# Perform analyses
-total_volumes = analyzer.analyze_total_volume()
-volumes_by_qual = analyzer.analyze_volumes_by_qualification()
-institution_roles = analyzer.analyze_institution_roles()
-qual_growth = analyzer.analyze_qualification_growth()
+# 7. Export to Excel (using sheet names from config)
+logger.info("Preparing data for Excel export...")
+excel_data = {}
+sheet_configs = config.get('excel', {}).get('sheets', [])
+analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr', 'qualification_market_yoy_growth'] # Match analyze() output
 
-# Calculate CAGR
-all_years = df_filtered['tilastovuosi'].unique()
-cagr_data = analyzer.calculate_qualification_cagr(
-    start_year=min(all_years),
-    end_year=max(all_years)
-)
+if len(sheet_configs) != len(analysis_keys):
+     logger.warning(f"Config sheet count mismatch. Adjusting export based on available analysis keys and config sheets.")
+     # Simple mapping: Use first N sheet names for first N results
+     num_sheets = min(len(sheet_configs), len(analysis_keys))
+     for i in range(num_sheets):
+         sheet_name = sheet_configs[i].get('name', f'Sheet{i+1}')
+         analysis_key = analysis_keys[i]
+         excel_data[sheet_name] = analysis_results.get(analysis_key, pd.DataFrame()).reset_index(drop=True)
+else:
+     # Assumed 1:1 mapping based on order
+     for i, sheet_info in enumerate(sheet_configs):
+         sheet_name = sheet_info.get('name', f'Sheet{i+1}') 
+         analysis_key = analysis_keys[i]
+         excel_data[sheet_name] = analysis_results.get(analysis_key, pd.DataFrame()).reset_index(drop=True)
 
-# Export to Excel
-file_utils = get_file_utils()
-excel_data = {
-    "Total Volumes": total_volumes,
-    "Volumes by Qualification": volumes_by_qual,
-    "Provider's Market": qual_growth,
-    "CAGR Analysis": cagr_data,
-    "Institution Roles": institution_roles
-}
+# Ensure the output directory path is a string for the exporter
+output_dir_str = str(output_dir)
 
-excel_path = file_utils.save_data_to_storage(
-    data=excel_data,
-    file_name=f"{institution_short_name}_education_market_analysis",
-    output_type="reports",
-    output_filetype=OutputFileType.XLSX,
-    index=False
-)
-logger.info(f"Exported Excel file to {excel_path}")
+try:
+    excel_path = export_to_excel(
+        data_dict=excel_data,
+        file_name=f"{institution_short_name}_custom_analysis",
+        output_dir=output_dir_str, # Pass output directory string
+        include_timestamp=True
+    )
+    logger.info(f"Exported Excel file to {excel_path}")
+except Exception as export_err:
+     logger.error(f"Failed to export Excel: {export_err}", exc_info=True)
 ```
 
 Run your custom script:

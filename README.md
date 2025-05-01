@@ -95,6 +95,8 @@ from src.vipunen.data.data_loader import load_data
 from src.vipunen.data.data_processor import clean_and_prepare_data
 from src.vipunen.analysis.market_analyzer import MarketAnalyzer
 from src.vipunen.export.excel_exporter import export_to_excel # Example exporter
+# Import config loader
+from src.vipunen.config.config_loader import get_config
 
 # Configuration (example)
 data_path = "amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
@@ -104,12 +106,15 @@ institution_short_name = "RI"
 min_market_size_threshold = 5
 output_dir = "data/reports/education_market_ri"
 
+# Load config
+config = get_config()
+
 # Load and prepare data
 raw_data = load_data(data_path)
 processed_data = clean_and_prepare_data(raw_data) # Apply cleaning as needed
 
-# Initialize analyzer
-analyzer = MarketAnalyzer(processed_data)
+# Initialize analyzer, passing the config
+analyzer = MarketAnalyzer(processed_data, cfg=config)
 analyzer.institution_names = institution_variants
 analyzer.institution_short_name = institution_short_name
 
@@ -117,8 +122,17 @@ analyzer.institution_short_name = institution_short_name
 analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size_threshold)
 
 # Export (example)
+# Note: Sheet names and column names in the output are controlled by config.yaml
+excel_data = {
+    config['excel']['sheets'][0]['name']: analysis_results.get('total_volumes'),
+    config['excel']['sheets'][1]['name']: analysis_results.get('volumes_by_qualification'),
+    config['excel']['sheets'][2]['name']: analysis_results.get('detailed_providers_market'),
+    config['excel']['sheets'][3]['name']: analysis_results.get('qualification_cagr')
+    # Add other results as needed, mapping to config sheet names
+}
+
 excel_file = export_to_excel(
-    analysis_results,
+    excel_data,
     f"{institution_short_name}_analysis",
     output_dir=output_dir
 )
@@ -129,6 +143,38 @@ print(f"Exported results to {excel_file}")
 ```
 
 See the [Programmatic Usage Guide](docs/PROGRAMMATIC_USAGE.md) and the [Market Analysis Features](docs/MARKET_ANALYSIS.md) documentation for more details.
+
+## Configuration (`config.yaml`)
+
+The analysis behavior, input/output paths, column names, Excel sheet names, and visualization filters can be customized via the `config.yaml` file located in the project root.
+
+Key sections include:
+
+*   `columns`: Defines mappings between input data columns and the desired output column names. Modifying `columns.output` allows you to change the headers used in the analysis results and the exported Excel file.
+*   `excel.sheets`: Defines the names and descriptions for the sheets generated in the Excel export. Modify the `name` fields here to control the output sheet names.
+*   `institutions`: Specify the target institution, its short name, and known name variants for data matching.
+*   `paths`: Define input data location and the base directory for output reports.
+*   `analysis`: Configure analysis thresholds, such as `min_market_size_threshold` for filtering qualifications and settings for the gainers/losers plots.
+
+### Language Customization
+
+By modifying the `columns.output` and `excel.sheets` sections in `config.yaml`, you can translate the output column headers and Excel sheet names into different languages. The default configuration includes examples for Finnish:
+
+```yaml
+# config.yaml (snippet)
+columns:
+  output:
+    year: 'Vuosi'
+    qualification: 'Tutkinto'
+    provider: 'Oppilaitos'
+    # ... other column names ...
+excel:
+  sheets:
+    - name: "NOM Yhteensä"
+    - name: "Oppilaitoksen NOM tutkinnoittain"
+    - name: "Oppilaitoksen koko markkina"
+    - name: "CAGR analyysi"
+```
 
 ## Input Data Format
 
@@ -147,14 +193,14 @@ See [Data Requirements](docs/DATA_REQUIREMENTS.md) for full details.
 
 The analysis typically produces:
 
-1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
+1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). The names of the sheets and the column headers within them are configurable via `config.yaml` (see Configuration section). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
 2.  A **PDF report (`visualizations.pdf`)** saved in a `plots` subdirectory within the main output folder. This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
     *   Total student volumes over time (Stacked Area Chart)
     *   Market share evolution for top competitors within active qualifications (Line Charts - one per qualification)
     *   Institution's market share across active qualifications over time (Heatmap)
     *   Year-over-year market growth/decline for active qualifications (Horizontal Bar Chart)
     *   Market share gainers/losers for active qualifications (Horizontal Bar Charts - one per qualification)
-    *   Treemap showing institution's market share vs. qualification size for the reference year.
+    *   Treemap showing institution's market share vs. qualification size for the reference year (Static plot using Matplotlib/Squarify).
     *   *(Note: The "Heatmap with Marginals" plot is currently excluded from the PDF output.)*
 3.  Console logs detailing the analysis progress.
 

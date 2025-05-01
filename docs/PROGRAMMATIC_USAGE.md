@@ -229,4 +229,53 @@ raw_data = file_utils.load_data_from_storage(
     file_path="your_data_file.csv",
     input_type="raw"
 )
+```
+
+## New Example Code
+
+```python
+from src.vipunen.data.data_processor import clean_and_prepare_data
+from src.vipunen.analysis.market_analyzer import MarketAnalyzer
+from src.vipunen.export.excel_exporter import export_to_excel # Example exporter
+# Import config loader
+from src.vipunen.config.config_loader import get_config
+
+# Configuration (example)
+data_path = "amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
+institution_name = "Rastor-instituutti ry"
+institution_variants = ["Rastor-instituutti ry", "Rastor Oy"]
+institution_short_name = "RI"
+min_market_size_threshold = 5
+output_dir = "data/reports/education_market_ri"
+
+# Load config
+config = get_config()
+
+# Load and prepare data
+raw_data = load_data(data_path)
+processed_data = clean_and_prepare_data(raw_data) # Apply cleaning as needed
+
+# Initialize analyzer, passing the config
+analyzer = MarketAnalyzer(processed_data, cfg=config)
+analyzer.institution_names = institution_variants
+analyzer.institution_short_name = institution_short_name
+
+# Run analysis
+analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size_threshold)
+
+# Export (example)
+# Note: Sheet names and column names in the output are controlled by config.yaml
+excel_data = {
+    config['excel']['sheets'][0]['name']: analysis_results.get('total_volumes'),
+    config['excel']['sheets'][1]['name']: analysis_results.get('volumes_by_qualification'),
+    config['excel']['sheets'][2]['name']: analysis_results.get('detailed_providers_market'),
+    config['excel']['sheets'][3]['name']: analysis_results.get('qualification_cagr')
+}
+
+excel_file = export_to_excel(
+    excel_data,
+    f"{institution_short_name}_analysis",
+    output_dir=output_dir
+)
+print(f"Exported results to {excel_file}")
 ``` 

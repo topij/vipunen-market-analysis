@@ -23,11 +23,14 @@ from FileUtils import OutputFileType
 file_utils = get_file_utils()
 
 # Prepare data for Excel export (dictionary of DataFrames)
+# Note: Sheet names are defined in config.yaml['excel']['sheets']
+# The keys used here are placeholders for the corresponding DataFrames
 excel_data = {
-    "Total Volumes": total_volumes_df,
-    "Volumes by Qualification": volumes_by_qual_df,
-    "Provider's Market": qual_growth_df,
-    "CAGR Analysis": cagr_data_df
+    "Sheet Name 1 (from config)": total_volumes_df,
+    "Sheet Name 2 (from config)": volumes_by_qual_df,
+    "Sheet Name 3 (from config)": detailed_providers_market_df, # Renamed key for clarity
+    "Sheet Name 4 (from config)": cagr_data_df
+    # Add other sheets like qual_market_yoy_growth_df if needed
 }
 
 # Export to Excel
@@ -80,64 +83,65 @@ def export_to_excel(data_dict, file_name, output_type="reports", **kwargs):
 
 ## Standard Excel Worksheets
 
-The standard Excel export, generated using the results from `MarketAnalyzer.analyze()` (see [Market Analysis Features](MARKET_ANALYSIS.md) for details on filtering), includes the following worksheets:
+The standard Excel export, generated using the results from `MarketAnalyzer.analyze()` (see [Market Analysis Features](MARKET_ANALYSIS.md) for details on filtering), includes the following worksheets. 
 
-| Worksheet Name             | Content                                                                                                   | Filtering Applied (based on `analyze()` logic) |
+**Note:** The actual names of these worksheets are defined in `config.yaml` under `excel.sheets`. The names listed below describe the *content* of each sheet in the default configuration.
+
+| Default Worksheet Name     | Content                                                                                                   | Filtering Applied (based on `analyze()` logic) |
 | :------------------------- | :-------------------------------------------------------------------------------------------------------- | :--------------------------------------------- |
-| **Total Volumes**          | Institution's total volumes by year, broken down by provider vs. subcontractor roles.                       | None                                           |
-| **Volumes by Qualification** | Student volumes for the target institution for each qualification by year.                                  | None (shows all qualifications institution participated in) |
-| **Detailed Provider Market** | Comprehensive market data (shares, ranks, volumes) for **all providers** across **all years** for qualifications relevant to the target institution. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
-| **CAGR Analysis**          | Detailed qualification history based *only* on the target institution's volumes, including CAGR calculation. | None (shows all qualifications institution ever offered with sufficient data) |
-| **Qual Market YoY Growth** | Year-over-Year growth (%) of the *total market size* for each qualification.                              | **Filtered** to exclude qualifications identified in `analyze()` as low volume OR inactive for the target institution. |
-| *(Other sheets like `market_shares` or `overall_total_market_volume` may also be present depending on the `analyze()` results)* |
+| **NOM Yhteensä**           | Institution's total volumes by year, broken down by provider vs. subcontractor roles.                       | None                                           |
+| **Oppilaitoksen NOM tutkinnoittain** | Student volumes for the target institution for each qualification by year.                                  | None (shows all qualifications institution participated in) |
+| **Oppilaitoksen koko markkina** | Comprehensive market data (shares, ranks, volumes) for **all providers** across **all years** for qualifications relevant to the target institution. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
+| **CAGR analyysi**          | Detailed qualification history based *only* on the target institution's volumes, including CAGR calculation. | None (shows all qualifications institution ever offered with sufficient data) |
+| *(Potentially) **Qual Market YoY Growth** * | Year-over-Year growth (%) of the *total market size* for each qualification.                              | **Filtered** to exclude qualifications identified in `analyze()` as low volume OR inactive for the target institution. |
+| *(Other sheets may be present depending on the analysis results and configuration)* |
 
-## Example Output Structure
+## Example Output Structure (Column Names)
 
-A typical Excel export contains:
+Column names within each sheet are also configurable via `config.yaml` under `columns.output`. The structure below shows the *default Finnish* column names for each sheet content type:
 
-1.  **Total Volumes** worksheet:
-    *   Year
-    *   Total Volume
-    *   Volume as Provider
-    *   Volume as Subcontractor
-    *   Year-over-Year Growth
+1.  **Total Volumes Sheet Content**:
+    *   `Vuosi`
+    *   `NOM järjestäjänä`
+    *   `NOM hankintana`
+    *   `NOM yhteensä`
 
-2.  **Volumes by Qualification** worksheet:
-    *   Year
-    *   Qualification
-    *   Provider Amount
-    *   Subcontractor Amount
-    *   Total Amount
-    *   Market Total
-    *   Market Share (%)
+2.  **Volumes by Qualification Sheet Content**:
+    *   `Vuosi`
+    *   `Tutkinto`
+    *   `NOM järjestäjänä`
+    *   `NOM hankintana`
+    *   `NOM yhteensä`
+    *   `Markkina yhteensä`
+    *   `Markkinaosuus (%)`
 
-3.  **Detailed Provider Market** worksheet (Formerly 'Provider's Market'):
-    *   Year
-    *   Qualification
-    *   Provider
-    *   Provider Amount
-    *   Subcontractor Amount
-    *   Total Volume (Provider's total volume for that qual/year)
-    *   Market Total (Qualification's total market volume for that year)
-    *   Market Share (%)
-    *   Market Rank
-    *   Market Share Growth (%) (YoY change in provider's market share)
-    *   Market Gainer Rank
+3.  **Detailed Provider Market Sheet Content**:
+    *   `Vuosi`
+    *   `Tutkinto`
+    *   `Oppilaitos`
+    *   `NOM järjestäjänä`
+    *   `NOM hankintana`
+    *   `NOM yhteensä`
+    *   `Markkina yhteensä`
+    *   `Markkinaosuus (%)`
+    *   `Sijoitus markkinaosuuden mukaan`
+    *   `Markkinaosuuden kasvu (%)`
+    *   `Sijoitus markkinaosuuden kasvun mukaan`
 
-4.  **CAGR Analysis** worksheet:
-    *   Qualification
-    *   CAGR (%)
-    *   First Year
-    *   Last Year
-    *   First Year Volume
-    *   Last Year Volume
-    *   Years Present
+4.  **CAGR Analysis Sheet Content**:
+    *   `Tutkinto`
+    *   `CAGR (%)`
+    *   `Aloitusvuosi`
+    *   `Viimeinen vuosi`
+    *   `Aloitusvuode volyymi`
+    *   `Viimeisen vuoden volyymi`
+    *   `Vuosia datassa`
 
-5.  **Qual Market YoY Growth** worksheet:
-    *   Qualification
-    *   Year
-    *   Market Total
-    *   Market Total YoY Growth (%) (YoY growth of the total market for the qualification)
+5.  **Qual Market YoY Growth Sheet Content**:
+    *   `Tutkinto`
+    *   `Vuosi`
+    *   `Markkina yhteensä`
+    *   `Markkina yhteensä YoY Growth (%)`
 
 ## Export File Path Structure
 

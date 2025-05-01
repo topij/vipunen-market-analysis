@@ -11,19 +11,48 @@ columns:
     volume: 'nettoopiskelijamaaraLkm'
     update_date: 'tietojoukkoPaivitettyPvm'
   
+  # output:
+  #   year: 'Year'
+  #   qualification: 'Qualification'
+  #   provider: 'Provider'
+  #   provider_amount: 'Provider Amount'
+  #   subcontractor_amount: 'Subcontractor Amount'
+  #   total_volume: 'Total Volume'
+  #   market_total: 'Market Total'
+  #   market_share: 'Market Share (%)'
+  #   market_rank: 'Market Rank'
+  #   market_share_growth: 'Market Share Growth (%)'
+  #   market_gainer: 'market gainer'
+  #   market_gainer_rank: 'Market Gainer Rank'
+  #   # CAGR Sheet Columns
+  #   cagr_rate: 'CAGR (%)'
+  #   cagr_first_year: 'First Year'
+  #   cagr_last_year: 'Last Year'
+  #   cagr_first_year_volume: 'First Year Volume'
+  #   cagr_last_year_volume: 'Last Year Volume'
+  #   cagr_years_present: 'Years Present'
+
+# Finnish output
   output:
-    year: 'Year'
-    qualification: 'Qualification'
-    provider: 'Provider'
-    provider_amount: 'Provider Amount'
-    subcontractor_amount: 'Subcontractor Amount'
-    total_volume: 'Total Volume'
-    market_total: 'Market Total'
-    market_share: 'Market Share (%)'
-    market_rank: 'Market Rank'
-    market_share_growth: 'Market Share Growth (%)'
+    year: 'Vuosi'
+    qualification: 'Tutkinto'
+    provider: 'Oppilaitos'
+    provider_amount: 'NOM järjestäjänä'
+    subcontractor_amount: 'NOM hankintana'
+    total_volume: 'NOM yhteensä'
+    market_total: 'Markkina yhteensä'
+    market_share: 'Markkinaosuus (%)'
+    market_rank: 'Sijoitus markkinaosuuden mukaan'
+    market_share_growth: 'Markkinaosuuden kasvu (%)'
     market_gainer: 'market gainer'
-    market_gainer_rank: 'Market Gainer Rank'
+    market_gainer_rank: 'Sijoitus markkinaosuuden kasvun mukaan'
+    # CAGR Sheet Columns
+    cagr_rate: 'CAGR (%)'
+    cagr_first_year: 'Aloitusvuosi'
+    cagr_last_year: 'Viimeinen vuosi'
+    cagr_first_year_volume: 'Aloitusvuode volyymi'
+    cagr_last_year_volume: 'Viimeisen vuoden volyymi'
+    cagr_years_present: 'Vuosia datassa'
 
 # Institution information
 # Change as needed to match the institution you want to analyze
@@ -60,15 +89,27 @@ api:
   metadata_dir_name: ".metadata" # Directory for storing update date info
 
 # Excel export settings
+# excel:
+  # sheets:
+  #   - name: "Total Volumes"
+  #     description: "Total student volumes by year"
+  #   - name: "Volumes by Qualification"
+  #     description: "Student volumes broken down by qualification"
+  #   - name: "Provider's Market"
+  #     description: "Market analysis including all providers"
+  #   - name: "CAGR Analysis"
+  #     description: "Compound Annual Growth Rate analysis"
+
+# Finnish excel
 excel:
   sheets:
-    - name: "Total Volumes"
-      description: "Total student volumes by year"
-    - name: "Volumes by Qualification"
+    - name: "NOM Yhteensä"
+      description: "Netto-opiskelijamäärä yhteensä"
+    - name: "Oppilaitoksen NOM tutkinnoittain"
       description: "Student volumes broken down by qualification"
-    - name: "Provider's Market"
+    - name: "Oppilaitoksen koko markkina"
       description: "Market analysis including all providers"
-    - name: "CAGR Analysis"
+    - name: "CAGR analyysi"
       description: "Compound Annual Growth Rate analysis"
 
 # Analysis configurations

@@ -12,6 +12,8 @@ from typing import Dict, Any, Optional
 import math
 import datetime # Added for date parsing
 import matplotlib.pyplot as plt # Add import
+import numpy as np
+import plotly.graph_objects as go
 
 from ..config.config_loader import get_config
 from ..data.data_loader import load_data
@@ -237,11 +239,11 @@ def generate_visualizations(
         # --- End Aggregation ---
 
         # Check for duplicates before pivoting (SHOULD NOT HAPPEN after aggregation)
-        # duplicates = inst_share_df.duplicated(subset=['Qualification', 'Year'], keep=False)
+        # duplicates = inst_share_df.duplicated(subset=[qual_col, year_col], keep=False)
         # if duplicates.any():
-        #     logger.warning(f"Found duplicate Qualification/Year entries for {inst_short_name} AFTER AGGREGATION. This should not happen. Dropping duplicates.")
+        #     logger.warning(f"Found duplicate {qual_col}/{year_col} entries for {inst_short_name} AFTER AGGREGATION. This should not happen. Dropping duplicates.")
         #     logger.debug(f"Duplicate rows:\n{inst_share_df[duplicates]}")
-        #     inst_share_df = inst_share_df.drop_duplicates(subset=['Qualification', 'Year'], keep='first')
+        #     inst_share_df = inst_share_df.drop_duplicates(subset=[qual_col, year_col], keep='first')
             
         heatmap_data = inst_share_df.pivot(index=qual_col, columns=year_col, values=market_share_col)
         # Filter heatmap data to only active qualifications
@@ -268,8 +270,8 @@ def generate_visualizations(
     #         logger.info("Generating Market Share Heatmap with Marginals...")
     #         # Prepare right data (latest year market total per qual)
     #         # Note: Market Total comes from detailed_df, not the aggregated one
-    #         latest_detailed = detailed_df[detailed_df['Year'] == plot_reference_year]
-    #         right_data = latest_detailed.drop_duplicates(subset='Qualification').set_index('Qualification')['Market Total']
+    #         latest_detailed = detailed_df[detailed_df[year_col] == plot_reference_year]
+    #         right_data = latest_detailed.drop_duplicates(subset=qual_col).set_index(qual_col)[market_total_col]
     #         # Filter right_data to only active qualifications
     #         right_data = right_data[right_data.index.isin(active_qualifications)]
     # 
@@ -301,22 +303,24 @@ def generate_visualizations(
         
     # --- Plot 5: Horizontal Bar (Qualification Growth) ---
     qual_growth_df = analysis_results.get('qualification_market_yoy_growth')
+    # Define the derived growth column name
+    market_total_growth_col = f"{market_total_col} YoY Growth (%)"
     if qual_growth_df is not None and not qual_growth_df.empty:
         try:
             logger.info("Generating Qualification Market Growth Bar Chart...")
             # Use growth data for the transition into the plot_reference_year
-            growth_ref_year = qual_growth_df[qual_growth_df['Year'] == plot_reference_year].dropna(subset=['Market Total YoY Growth (%)'])
+            growth_ref_year = qual_growth_df[qual_growth_df[year_col] == plot_reference_year].dropna(subset=[market_total_growth_col])
             # Filter to qualifications relevant to the institution (active ones)
-            growth_ref_year = growth_ref_year[growth_ref_year['Qualification'].isin(active_qualifications)]
+            growth_ref_year = growth_ref_year[growth_ref_year[qual_col].isin(active_qualifications)]
                 
             if not growth_ref_year.empty:
-                sorted_growth = growth_ref_year.sort_values('Market Total YoY Growth (%)')
+                sorted_growth = growth_ref_year.sort_values(market_total_growth_col)
                 # Capture fig, ax return values
                 fig, ax = visualizer.create_horizontal_bar_chart(
                     data=sorted_growth,
-                    x_col='Market Total YoY Growth (%)',
-                    y_col='Qualification',
-                    volume_col='Market Total',
+                    x_col=market_total_growth_col,
+                    y_col=qual_col,
+                    volume_col=market_total_col,
                     title=f"Tutkinnot: nousijat ja laskijat (YoY: {plot_reference_year-1}-{plot_reference_year})",
                     caption=base_caption,
                     filename=f"{inst_short_name}_qualification_growth_bar",
@@ -335,8 +339,8 @@ def generate_visualizations(
     for qual in active_qualifications: 
         try:
             latest_qual_df = detailed_df[
-                (detailed_df['Qualification'] == qual) & (detailed_df['Year'] == plot_reference_year)
-            ].dropna(subset=['Market Share Growth (%)'])
+                (detailed_df[qual_col] == qual) & (detailed_df[year_col] == plot_reference_year)
+            ].dropna(subset=[market_share_growth_col])
 
             if not latest_qual_df.empty:
                 # --- Filtering based on config ---
@@ -350,12 +354,12 @@ def generate_visualizations(
                 filtered_df = latest_qual_df.copy() # Start with a copy
 
                 # Apply Market Share Threshold
-                if min_share_threshold is not None and 'Market Share (%)' in filtered_df.columns:
+                if min_share_threshold is not None and market_share_col in filtered_df.columns:
                     try:
                         min_share = float(min_share_threshold)
                         if 0 <= min_share <= 100:
                             original_len = len(filtered_df)
-                            filtered_df = filtered_df[filtered_df['Market Share (%)'] >= min_share]
+                            filtered_df = filtered_df[filtered_df[market_share_col] >= min_share]
                             if len(filtered_df) < original_len: # Check if filter actually removed rows
                                 filter_notes.append(f"Markkinaosuus < {min_share}%")
                             logger.debug(f"[{qual}] Applying min market share threshold: >= {min_share}%. Kept {len(filtered_df)}/{original_provider_count} providers.")
@@ -365,7 +369,7 @@ def generate_visualizations(
                         logger.warning(f"Invalid min_market_share_threshold ({min_share_threshold}), must be a number. Skipping.")
 
                 # Apply Market Rank Percentile Threshold
-                if min_rank_percentile is not None and 'Market Rank' in filtered_df.columns:
+                if min_rank_percentile is not None and market_rank_col in filtered_df.columns:
                     try:
                         percentile = float(min_rank_percentile)
                         if 0 <= percentile <= 100:
@@ -381,11 +385,11 @@ def generate_visualizations(
                                 
                                 # Find the rank corresponding to the cutoff
                                 # Sort by rank to find the rank value at the Nth position
-                                sorted_by_rank = filtered_df.sort_values('Market Rank')
+                                sorted_by_rank = filtered_df.sort_values(market_rank_col)
                                 if num_providers_to_keep <= len(sorted_by_rank):
-                                    rank_threshold = sorted_by_rank.iloc[num_providers_to_keep - 1]['Market Rank']
+                                    rank_threshold = sorted_by_rank.iloc[num_providers_to_keep - 1][market_rank_col]
                                     # Keep all providers with rank <= rank_threshold (handles ties)
-                                    filtered_df = filtered_df[filtered_df['Market Rank'] <= rank_threshold]
+                                    filtered_df = filtered_df[filtered_df[market_rank_col] <= rank_threshold]
                                     if len(filtered_df) < original_len: # Check if filter actually removed rows
                                         filter_notes.append(f"Sijoitus top {100-percentile:.0f}% ulkopuolella")
                                     logger.debug(f"[{qual}] Applying min market rank percentile: {percentile}th (keep top {100-percentile:.1f}% => rank <= {rank_threshold}). Kept {len(filtered_df)} providers.")
@@ -401,10 +405,10 @@ def generate_visualizations(
                 
                 # Use the filtered data frame for selecting gainers/losers
                 if not filtered_df.empty:
-                    gainers = filtered_df.nlargest(3, 'Market Share Growth (%)')
-                    losers = filtered_df.nsmallest(3, 'Market Share Growth (%)')
+                    gainers = filtered_df.nlargest(3, market_share_growth_col)
+                    losers = filtered_df.nsmallest(3, market_share_growth_col)
                     # Ensure no overlap if fewer than 6 providers
-                    plot_data = pd.concat([losers, gainers]).drop_duplicates().sort_values('Market Share Growth (%)')
+                    plot_data = pd.concat([losers, gainers]).drop_duplicates().sort_values(market_share_growth_col)
                 else:
                     logger.info(f"[{qual}] No providers left after filtering for gainer/loser plot.")
                     plot_data = pd.DataFrame() # Ensure plot_data is an empty DataFrame
@@ -418,9 +422,9 @@ def generate_visualizations(
                     qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30]
                     fig, _ = visualizer.create_horizontal_bar_chart( # Capture fig
                         data=plot_data,
-                        x_col='Market Share Growth (%)',
-                        y_col='Provider',
-                        volume_col='Market Share (%)', # Show current market share in label
+                        x_col=market_share_growth_col,
+                        y_col=provider_col,
+                        volume_col=market_share_col, # Show current market share in label
                         title=f"{qual}: suurimmat nousijat ja laskijat ({plot_reference_year})",
                         caption=plot_caption, # Use the potentially extended caption
                         filename=f"{inst_short_name}_{qual_filename_part}_gainer_loser_bar",
@@ -432,49 +436,52 @@ def generate_visualizations(
             logger.error(f"Failed to generate Gainer/Loser plot for {qual}: {e}", exc_info=True)
 
     # --- Plot 7: Treemap ---
-    inst_latest_df = detailed_df[(detailed_df['Provider'].isin(inst_names)) & (detailed_df['Year'] == plot_reference_year)]
+    inst_latest_df = detailed_df[(detailed_df[provider_col].isin(inst_names)) & (detailed_df[year_col] == plot_reference_year)]
     if inst_latest_df is not None and not inst_latest_df.empty:
         try:
             logger.info("Generating Market Share Treemap...")
             # Use data from plot_reference_year for the treemap
             treemap_base_data = detailed_df[
-                (detailed_df['Provider'].isin(inst_names)) &
-                (detailed_df['Year'] == plot_reference_year)
+                (detailed_df[provider_col].isin(inst_names)) &
+                (detailed_df[year_col] == plot_reference_year)
             ].copy()
 
             # Filter for active qualifications
-            treemap_base_data = treemap_base_data[treemap_base_data['Qualification'].isin(active_qualifications)]
+            treemap_base_data = treemap_base_data[treemap_base_data[qual_col].isin(active_qualifications)]
             
             # Ensure Market Total is present for sizing
-            if 'Market Total' not in treemap_base_data.columns:
+            if market_total_col not in treemap_base_data.columns:
                  # Merge market total if missing (might happen if filtered differently)
-                 ref_year_totals = detailed_df[detailed_df['Year'] == plot_reference_year][['Qualification', 'Market Total']].drop_duplicates()
-                 treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on='Qualification', how='left')
+                 ref_year_totals = detailed_df[detailed_df[year_col] == plot_reference_year][[qual_col, market_total_col]].drop_duplicates()
+                 treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on=qual_col, how='left')
             
             # Apply RI-specific adjustment for 'Liiketoiminnan PT'
             if analyzer.institution_short_name == "RI":
-                pt_index = treemap_base_data[treemap_base_data['Qualification'] == 'Liiketoiminnan PT'].index
+                pt_index = treemap_base_data[treemap_base_data[qual_col] == 'Liiketoiminnan PT'].index
                 if not pt_index.empty:
                     logger.info("Applying RI-specific adjustment: Halving Market Total for Liiketoiminnan PT in Treemap.")
-                    treemap_base_data.loc[pt_index, 'Market Total'] = treemap_base_data.loc[pt_index, 'Market Total'] / 2
+                    treemap_base_data.loc[pt_index, market_total_col] = treemap_base_data.loc[pt_index, market_total_col] / 2
                  
             # Ensure Market Total is not zero or NaN before proceeding
-            treemap_data = treemap_base_data[treemap_base_data['Market Total'].fillna(0) > 0].copy()
+            treemap_data = treemap_base_data[treemap_base_data[market_total_col].fillna(0) > 0].copy()
             
             if not treemap_data.empty:
                 # Sort by Market Total descending for stable treemap layout
-                treemap_data = treemap_data.sort_values('Market Total', ascending=False)
+                treemap_data = treemap_data.sort_values(market_total_col, ascending=False)
                 
+                # Call the original Matplotlib treemap function
                 fig, _ = visualizer.create_treemap(
                     data=treemap_data,
-                    value_col='Market Total', # Size by Market Total
-                    label_col='Qualification', 
-                    detail_col='Market Share (%)', # Show institution's share inside
+                    value_col=market_total_col, # Size by Market Total
+                    label_col=qual_col, 
+                    detail_col=market_share_col, # Show institution's share inside
                     title=f"{inst_short_name}: Tutkintojen markkinaosuudet ({plot_reference_year})",
                     caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else ""),
                     filename=f"{inst_short_name}_qualification_treemap"
                 )
-                # plt.close(fig) # Close figure - Keep commented for PDF output
+                # No need for update_traces or add_plotly_figure_to_pdf as saving is handled internally for Matplotlib figs
+                # plt.close(fig) # Close figure - Keep commented out as saving might happen within create_treemap or handled by PDFPages
+
         except Exception as e:
             logger.error(f"Failed to generate Treemap plot: {e}", exc_info=True)
     else:
@@ -673,14 +680,33 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Step 7: Export results to Excel (only if analysis succeeds)
         logger.info("Exporting results to Excel")
         
-        # Prepare Excel data using results from analyze()
-        excel_data = {
-            "Total Volumes": analysis_results.get('total_volumes', pd.DataFrame()).reset_index(drop=True),
-            "Volumes by Qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()).reset_index(drop=True),
-            "Provider's Market": analysis_results.get("detailed_providers_market", pd.DataFrame()).reset_index(drop=True),
-            "CAGR Analysis": analysis_results.get('qualification_cagr', pd.DataFrame()).reset_index(drop=True)
-        }
+        # Prepare Excel data using results from analyze() and sheet names from config
+        excel_data = {}
+        sheet_configs = config.get('excel', {}).get('sheets', [])
+        analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr']
         
+        if len(sheet_configs) != len(analysis_keys):
+             logger.warning(f"Mismatch between number of sheet configs ({len(sheet_configs)}) and expected analysis results ({len(analysis_keys)}). Falling back to default sheet names.")
+             # Fallback to old hardcoded names if config doesn't match structure
+             excel_data = {
+                 "Total Volumes": analysis_results.get('total_volumes', pd.DataFrame()).reset_index(drop=True),
+                 "Volumes by Qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()).reset_index(drop=True),
+                 "Provider's Market": analysis_results.get("detailed_providers_market", pd.DataFrame()).reset_index(drop=True),
+                 "CAGR Analysis": analysis_results.get('qualification_cagr', pd.DataFrame()).reset_index(drop=True)
+             }
+        else:
+             for i, sheet_info in enumerate(sheet_configs):
+                 sheet_name = sheet_info.get('name', f'Sheet{i+1}') # Get name from config, fallback to SheetN
+                 analysis_key = analysis_keys[i]
+                 # Get the corresponding DataFrame, provide an empty one as default
+                 df = analysis_results.get(analysis_key, pd.DataFrame())
+                 # Reset index if DataFrame is not empty
+                 if not df.empty:
+                     excel_data[sheet_name] = df.reset_index(drop=True)
+                 else:
+                     excel_data[sheet_name] = df # Keep empty DataFrame as is
+                 logger.info(f"Mapping analysis key '{analysis_key}' to Excel sheet '{sheet_name}'")
+
         # Export to Excel using the relative path
         excel_path = export_to_excel(
             data_dict=excel_data,

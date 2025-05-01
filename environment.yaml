@@ -19,6 +19,7 @@ dependencies:
   - seaborn
   - numpy
   - squarify
+  - kaleido
 
   # presentations
   - python-pptx

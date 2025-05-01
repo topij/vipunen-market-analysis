@@ -7,10 +7,27 @@ from pathlib import Path
 import os
 from matplotlib import ticker
 from matplotlib.colors import LinearSegmentedColormap, to_rgba
-import squarify  # For treemap plots
+import squarify
 import textwrap
 import warnings # Add import
 from matplotlib.backends.backend_pdf import PdfPages # Added import
+import plotly.graph_objects as go
+import io
+import matplotlib.image as mpimg
+import logging # Add import
+
+# Try importing kaleido for static image export, but don't make it a hard requirement
+kaleido_installed = False
+try:
+    import kaleido
+    # Optionally check version or perform a basic operation
+    kaleido_installed = True
+except ImportError:
+    print("Warning: kaleido package not found. Plotly static image export (needed for PDF) will not work.")
+    print("Please install it: pip install kaleido")
+
+# Set up logger for this module
+logger = logging.getLogger(__name__)
 
 # Color palette definition (using the brand colors from the style sheets)
 COLOR_PALETTES = {
@@ -729,7 +746,7 @@ class EducationVisualizer:
     def create_treemap(self, data, value_col, label_col, detail_col=None, title=None,
                       caption=None, filename=None, figsize=(16, 9), wrap_width=20):
         """
-        Create a treemap visualization
+        Create a treemap visualization using Matplotlib and Squarify.
 
         Args:
             data: DataFrame containing the data, sorted appropriately for layout stability.
@@ -737,58 +754,111 @@ class EducationVisualizer:
             label_col: Column name for segment labels (e.g., qualification name).
             detail_col: Column name for the detail value to display inside segments (e.g., market share %).
             title: Title for the chart.
-            caption: Optional caption
-            filename: Optional filename to save the visualization
-            figsize: Figure size tuple (defaults to 16:9 aspect ratio)
+            caption: Optional caption.
+            filename: Optional filename to save the visualization.
+            figsize: Figure size tuple (defaults to 16:9 aspect ratio).
             wrap_width: Width to wrap the label text inside segments.
 
         Returns:
-            fig, ax: Matplotlib figure and axis objects
+            fig, ax: Matplotlib figure and axis objects.
         """
         fig, ax = plt.subplots(figsize=figsize)
 
+        # Basic check for empty data before accessing columns
+        if data.empty:
+            logger.warning(f"Skipping treemap '{title}': Input data is empty.")
+            plt.close(fig) # Close the empty figure
+            return fig, ax
+            
         # Prepare data for treemap
+        # Ensure columns exist before accessing
+        if value_col not in data.columns or label_col not in data.columns:
+             logger.error(f"Missing required columns for treemap '{title}': Need '{value_col}' and '{label_col}'. Found: {data.columns.tolist()}")
+             plt.close(fig)
+             return fig, ax
+             
         sizes = data[value_col].values
         labels = data[label_col].values
-        details = data[detail_col].values if detail_col and detail_col in data.columns else sizes # Use size if no detail
+        # Use size if no detail_col provided or column doesn't exist
+        details = data[detail_col].values if detail_col and detail_col in data.columns else sizes
+
+        # Check for empty data after extracting values
+        if len(sizes) == 0:
+            logger.warning(f"Skipping treemap '{title}': No data after preparing values/labels.")
+            plt.close(fig) # Close the empty figure
+            return fig, ax # Return the empty fig/ax
 
         # Normalize sizes for plotting layout (0-100 range often used)
-        norm_sizes = squarify.normalize_sizes(sizes, dx=100, dy=100)
+        try:
+            # Ensure sizes are numeric and non-negative before normalizing
+            numeric_sizes = pd.to_numeric(sizes, errors='coerce')
+            numeric_sizes = numeric_sizes[pd.notna(numeric_sizes) & (numeric_sizes >= 0)]
+            if len(numeric_sizes) == 0:
+                 raise ValueError("No valid positive sizes for normalization.")
+            norm_sizes = squarify.normalize_sizes(numeric_sizes, dx=100, dy=100)
+        except ValueError as e:
+            logger.error(f"Error normalizing sizes for treemap '{title}': {e}. Original Sizes: {sizes}")
+            plt.close(fig)
+            return fig, ax
 
         # Compute rectangle coordinates using squarify
         # Width (dx) and height (dy) of the plotting area
         plot_width = 100
         plot_height = 100
-        rects_coords = squarify.squarify(norm_sizes, 0, 0, plot_width, plot_height)
+        try:
+            # Use only the valid normalized sizes
+            rects_coords = squarify.squarify(norm_sizes, 0, 0, plot_width, plot_height)
+        except ValueError as e:
+            logger.error(f"Error computing squarify layout for treemap '{title}': {e}. Normalized Sizes: {norm_sizes}")
+            plt.close(fig)
+            return fig, ax
 
         # Use palette colors in sequence
         colors = [COLOR_PALETTES["main"][i % len(COLOR_PALETTES["main"])]
-                 for i in range(len(sizes))]
+                 for i in range(len(norm_sizes))] # Match length of norm_sizes
 
         # Create the plot
-        # fig, ax = plt.subplots(figsize=figsize) # Already created
         ax.set_xlim(0, plot_width)
         ax.set_ylim(0, plot_height)
 
         # Draw rectangles and add labels
+        # Iterate based on norm_sizes length which matches rects_coords and colors
+        valid_indices = data[pd.to_numeric(data[value_col], errors='coerce').notna() & (pd.to_numeric(data[value_col], errors='coerce') >= 0)].index
+        if len(valid_indices) != len(rects_coords):
+             logger.warning(f"Mismatch between valid data rows ({len(valid_indices)}) and squarify rectangles ({len(rects_coords)}) for treemap '{title}'. Labels might be incorrect.")
+             # Attempt to proceed, but labels might be off
+
         for i, rect_info in enumerate(rects_coords):
+            if i >= len(valid_indices):
+                 logger.warning(f"Skipping rectangle {i+1} in treemap '{title}' due to index mismatch.")
+                 continue # Avoid index error if mismatch occurs
+                 
+            data_idx = valid_indices[i]
             x, y, dx, dy = rect_info['x'], rect_info['y'], rect_info['dx'], rect_info['dy']
-            color = colors[i % len(colors)]
+            color = colors[i]
 
             # Draw rectangle
             ax.add_patch(plt.Rectangle((x, y), dx, dy, facecolor=color, edgecolor='white', linewidth=1))
 
-            # Prepare label text
-            label_text = self._wrap_text(labels[i], wrap_width)
-            detail_val = details[i]
+            # Prepare label text using original data index
+            label_text = self._wrap_text(str(data.loc[data_idx, label_col]), wrap_width) # Ensure label is string
+            detail_val = data.loc[data_idx, detail_col] if detail_col and detail_col in data.columns else data.loc[data_idx, value_col]
             # Format detail as percentage if name suggests it, otherwise float
             detail_fmt = "({:.1f}%)" if (detail_col and '%' in detail_col) else "({:.1f})"
-            full_label = f"{label_text}\n{detail_fmt.format(detail_val)}"
+            try:
+                 detail_formatted = detail_fmt.format(detail_val)
+            except (ValueError, TypeError):
+                 detail_formatted = f"({detail_val})" # Fallback format
+
+            full_label = f"{label_text}\n{detail_formatted}"
 
             # Determine text color based on background lightness
-            r, g, b, _ = to_rgba(color)
-            luminance = 0.299*r + 0.587*g + 0.114*b
-            text_color = 'white' if luminance < 0.5 else 'black'
+            try:
+                r, g, b, _ = to_rgba(color)
+                luminance = 0.299*r + 0.587*g + 0.114*b
+                text_color = 'white' if luminance < 0.5 else 'black'
+            except Exception: # Catch potential errors in color conversion
+                text_color = 'black' # Default text color
 
             # Adjust font size based on rectangle size
             fontsize = max(6, min(10, int(np.sqrt(dx * dy) / 1.5)))
@@ -804,7 +874,8 @@ class EducationVisualizer:
         ax.set_frame_on(False)
 
         # Apply title and caption (using common formatting principles)
-        ax.set_title(title, fontsize=18, fontweight='bold', pad=20, loc='left')
+        if title:
+            ax.set_title(title, fontsize=18, fontweight='bold', pad=20, loc='left')
         if caption:
             fig.text(0.05, 0.01, caption, fontsize=9, color='#555555', ha='left')
 
@@ -813,6 +884,6 @@ class EducationVisualizer:
 
         # Save if filename provided
         if filename:
-            self.save_visualization(fig, filename)
+            self.save_visualization(fig, filename) # This saves the Matplotlib fig
 
         return fig, ax 

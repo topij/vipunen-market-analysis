@@ -521,8 +521,36 @@ class MarketAnalyzer:
         # If we reach here, either the columns were initially correct, 
         # or 'tutkinto' was successfully renamed to 'Qualification'.
 
+        # --- Rename columns based on output config --- 
+        cagr_rename_map = {
+            'Qualification': self.cols_out.get('qualification', 'Qualification'), # Reuse existing key
+            'CAGR': self.cols_out.get('cagr_rate', 'CAGR'),
+            'First Year': self.cols_out.get('cagr_first_year', 'First Year'),
+            'Last Year': self.cols_out.get('cagr_last_year', 'Last Year'),
+            'First Year Volume': self.cols_out.get('cagr_first_year_volume', 'First Year Volume'),
+            'Last Year Volume': self.cols_out.get('cagr_last_year_volume', 'Last Year Volume'),
+            'Years Present': self.cols_out.get('cagr_years_present', 'Years Present')
+            # Add 'Qualification Type' if it's handled and needs mapping
+        }
+        # Apply renaming only for columns that exist
+        cagr_rename_map = {k: v for k, v in cagr_rename_map.items() if k in cagr_results.columns}
+        cagr_results_renamed = cagr_results.rename(columns=cagr_rename_map)
+
+        # Select and order columns based on the renamed keys (optional)
+        final_cagr_cols = [
+            self.cols_out.get('qualification', 'Qualification'),
+            self.cols_out.get('cagr_rate', 'CAGR'),
+            self.cols_out.get('cagr_first_year', 'First Year'),
+            self.cols_out.get('cagr_last_year', 'Last Year'),
+            self.cols_out.get('cagr_first_year_volume', 'First Year Volume'),
+            self.cols_out.get('cagr_last_year_volume', 'Last Year Volume'),
+            self.cols_out.get('cagr_years_present', 'Years Present')
+        ]
+        final_cagr_cols_present = [col for col in final_cagr_cols if col in cagr_results_renamed.columns]
+        final_cagr_df = cagr_results_renamed[final_cagr_cols_present]
+
         logger.info(f"Calculated CAGR for {len(cagr_results)} qualifications")
-        return cagr_results
+        return final_cagr_df
     
     def calculate_overall_total_market_volume(self) -> pd.Series:
         """
@@ -638,30 +666,34 @@ class MarketAnalyzer:
         # Check if we have detailed data and at least one reference year (last_full_year or max_year)
         if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty and (last_full_year is not None or self.max_year is not None):
             detailed_df = results['detailed_providers_market'] # Get the original, unfiltered detailed data
-            # Use config output column name for provider
-            provider_col = self.cols_out['provider'] 
-            inst_names_list = self.institution_names 
+            # Use config output column names
+            year_col = self.cols_out['year']
+            qual_col = self.cols_out['qualification']
+            market_total_col = self.cols_out['market_total']
+            total_volume_col = self.cols_out['total_volume']
+            provider_col = self.cols_out['provider'] # Get provider column name from output config
+            inst_names_list = self.institution_names
             inst_short_name_log = self.institution_short_name
 
-            # --- Calculate Qualifications to Exclude (for specific filtering later) --- 
+            # --- Calculate Qualifications to Exclude (for specific filtering later) ---
             # 1. Check for Low Total Market Volume
             # ... (existing low volume check logic - calculates quals_to_exclude_low_volume) ...
             last_year_totals = pd.DataFrame()
-            if last_full_year is not None and last_full_year in detailed_df['Year'].unique():
-                 last_year_totals = detailed_df[detailed_df['Year'] == last_full_year][['Qualification', 'Market Total']].drop_duplicates()
+            if last_full_year is not None and last_full_year in detailed_df[year_col].unique():
+                 last_year_totals = detailed_df[detailed_df[year_col] == last_full_year][[qual_col, market_total_col]].drop_duplicates()
             current_year_totals = pd.DataFrame()
-            if self.max_year is not None and self.max_year in detailed_df['Year'].unique():
-                current_year_totals = detailed_df[detailed_df['Year'] == self.max_year][['Qualification', 'Market Total']].drop_duplicates()
+            if self.max_year is not None and self.max_year in detailed_df[year_col].unique():
+                current_year_totals = detailed_df[detailed_df[year_col] == self.max_year][[qual_col, market_total_col]].drop_duplicates()
             quals_below_last = set()
             if not last_year_totals.empty:
                  # Access threshold from config
-                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5) 
-                 quals_below_last = set(last_year_totals[last_year_totals['Market Total'] < threshold]['Qualification'].unique())
+                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5)
+                 quals_below_last = set(last_year_totals[last_year_totals[market_total_col] < threshold][qual_col].unique())
             quals_below_current = set()
             if not current_year_totals.empty:
                  # Access threshold from config
-                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5) 
-                 quals_below_current = set(current_year_totals[current_year_totals['Market Total'] < threshold]['Qualification'].unique())
+                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5)
+                 quals_below_current = set(current_year_totals[current_year_totals[market_total_col] < threshold][qual_col].unique())
             log_year_text_low_vol = ""
             if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
                 quals_to_exclude_low_volume = quals_below_last.intersection(quals_below_current)
@@ -683,17 +715,17 @@ class MarketAnalyzer:
             # 2. Check for Institution Inactivity (Using variants `inst_names_list`, threshold >= 1)
             # ... (existing inactivity check logic - calculates quals_to_exclude_inactive) ...
             inst_quals_last = set()
-            if last_full_year is not None and last_full_year in detailed_df['Year'].unique():
+            if last_full_year is not None and last_full_year in detailed_df[year_col].unique():
                 # Use provider_col variable here
-                inst_data_last = detailed_df[(detailed_df['Year'] == last_full_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df['Total Volume'] >= 1)]
-                inst_quals_last = set(inst_data_last['Qualification'].unique())
+                inst_data_last = detailed_df[(detailed_df[year_col] == last_full_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df[total_volume_col] >= 1)]
+                inst_quals_last = set(inst_data_last[qual_col].unique())
             inst_quals_current = set()
-            if self.max_year is not None and self.max_year in detailed_df['Year'].unique():
+            if self.max_year is not None and self.max_year in detailed_df[year_col].unique():
                 # Use provider_col variable here
-                inst_data_current = detailed_df[(detailed_df['Year'] == self.max_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df['Total Volume'] >= 1)]
-                inst_quals_current = set(inst_data_current['Qualification'].unique())
+                inst_data_current = detailed_df[(detailed_df[year_col] == self.max_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df[total_volume_col] >= 1)]
+                inst_quals_current = set(inst_data_current[qual_col].unique())
             # Use provider_col variable here
-            all_inst_quals = set(detailed_df[detailed_df[provider_col].isin(inst_names_list)]['Qualification'].unique())
+            all_inst_quals = set(detailed_df[detailed_df[provider_col].isin(inst_names_list)][qual_col].unique())
             log_year_text_inactive = ""
             if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
                 inactive_in_both = all_inst_quals - inst_quals_last - inst_quals_current
@@ -724,7 +756,8 @@ class MarketAnalyzer:
             if 'qualification_market_yoy_growth' in results and not results['qualification_market_yoy_growth'].empty:
                 growth_df = results['qualification_market_yoy_growth']
                 initial_rows = len(growth_df)
-                filtered_growth_df = growth_df[~growth_df['Qualification'].isin(quals_to_exclude_final)]
+                # Use qual_col here
+                filtered_growth_df = growth_df[~growth_df[qual_col].isin(quals_to_exclude_final)]
                 results['qualification_market_yoy_growth'] = filtered_growth_df
                 rows_removed = initial_rows - len(filtered_growth_df)
                 if rows_removed > 0:
@@ -735,8 +768,8 @@ class MarketAnalyzer:
             if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty:
                 detailed_df_to_filter = results['detailed_providers_market'] # Use the DF from results dict
                 initial_rows = len(detailed_df_to_filter)
-                # Filter rows where Total Volume is exactly 0
-                results['detailed_providers_market'] = detailed_df_to_filter[detailed_df_to_filter['Total Volume'] > 0]
+                # Filter rows where Total Volume is exactly 0, use total_volume_col
+                results['detailed_providers_market'] = detailed_df_to_filter[detailed_df_to_filter[total_volume_col] > 0]
                 final_rows = len(results['detailed_providers_market'])
                 rows_removed = initial_rows - final_rows
                 if rows_removed > 0:
@@ -810,30 +843,34 @@ class MarketAnalyzer:
         # Check if we have detailed data and at least one reference year (last_full_year or max_year)
         if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty and (last_full_year is not None or self.max_year is not None):
             detailed_df = results['detailed_providers_market'] # Get the original, unfiltered detailed data
-            # Use config output column name for provider
-            provider_col = self.cols_out['provider'] 
-            inst_names_list = self.institution_names 
+            # Use config output column names
+            year_col = self.cols_out['year']
+            qual_col = self.cols_out['qualification']
+            market_total_col = self.cols_out['market_total']
+            total_volume_col = self.cols_out['total_volume']
+            provider_col = self.cols_out['provider'] # Get provider column name from output config
+            inst_names_list = self.institution_names
             inst_short_name_log = self.institution_short_name
 
-            # --- Calculate Qualifications to Exclude (for specific filtering later) --- 
+            # --- Calculate Qualifications to Exclude (for specific filtering later) ---
             # 1. Check for Low Total Market Volume
             # ... (existing low volume check logic - calculates quals_to_exclude_low_volume) ...
             last_year_totals = pd.DataFrame()
-            if last_full_year is not None and last_full_year in detailed_df['Year'].unique():
-                 last_year_totals = detailed_df[detailed_df['Year'] == last_full_year][['Qualification', 'Market Total']].drop_duplicates()
+            if last_full_year is not None and last_full_year in detailed_df[year_col].unique():
+                 last_year_totals = detailed_df[detailed_df[year_col] == last_full_year][[qual_col, market_total_col]].drop_duplicates()
             current_year_totals = pd.DataFrame()
-            if self.max_year is not None and self.max_year in detailed_df['Year'].unique():
-                current_year_totals = detailed_df[detailed_df['Year'] == self.max_year][['Qualification', 'Market Total']].drop_duplicates()
+            if self.max_year is not None and self.max_year in detailed_df[year_col].unique():
+                current_year_totals = detailed_df[detailed_df[year_col] == self.max_year][[qual_col, market_total_col]].drop_duplicates()
             quals_below_last = set()
             if not last_year_totals.empty:
                  # Access threshold from config
-                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5) 
-                 quals_below_last = set(last_year_totals[last_year_totals['Market Total'] < threshold]['Qualification'].unique())
+                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5)
+                 quals_below_last = set(last_year_totals[last_year_totals[market_total_col] < threshold][qual_col].unique())
             quals_below_current = set()
             if not current_year_totals.empty:
                  # Access threshold from config
-                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5) 
-                 quals_below_current = set(current_year_totals[current_year_totals['Market Total'] < threshold]['Qualification'].unique())
+                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5)
+                 quals_below_current = set(current_year_totals[current_year_totals[market_total_col] < threshold][qual_col].unique())
             log_year_text_low_vol = ""
             if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
                 quals_to_exclude_low_volume = quals_below_last.intersection(quals_below_current)
@@ -855,17 +892,17 @@ class MarketAnalyzer:
             # 2. Check for Institution Inactivity (Using variants `inst_names_list`, threshold >= 1)
             # ... (existing inactivity check logic - calculates quals_to_exclude_inactive) ...
             inst_quals_last = set()
-            if last_full_year is not None and last_full_year in detailed_df['Year'].unique():
+            if last_full_year is not None and last_full_year in detailed_df[year_col].unique():
                 # Use provider_col variable here
-                inst_data_last = detailed_df[(detailed_df['Year'] == last_full_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df['Total Volume'] >= 1)]
-                inst_quals_last = set(inst_data_last['Qualification'].unique())
+                inst_data_last = detailed_df[(detailed_df[year_col] == last_full_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df[total_volume_col] >= 1)]
+                inst_quals_last = set(inst_data_last[qual_col].unique())
             inst_quals_current = set()
-            if self.max_year is not None and self.max_year in detailed_df['Year'].unique():
+            if self.max_year is not None and self.max_year in detailed_df[year_col].unique():
                 # Use provider_col variable here
-                inst_data_current = detailed_df[(detailed_df['Year'] == self.max_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df['Total Volume'] >= 1)]
-                inst_quals_current = set(inst_data_current['Qualification'].unique())
+                inst_data_current = detailed_df[(detailed_df[year_col] == self.max_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df[total_volume_col] >= 1)]
+                inst_quals_current = set(inst_data_current[qual_col].unique())
             # Use provider_col variable here
-            all_inst_quals = set(detailed_df[detailed_df[provider_col].isin(inst_names_list)]['Qualification'].unique())
+            all_inst_quals = set(detailed_df[detailed_df[provider_col].isin(inst_names_list)][qual_col].unique())
             log_year_text_inactive = ""
             if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
                 inactive_in_both = all_inst_quals - inst_quals_last - inst_quals_current
@@ -896,7 +933,8 @@ class MarketAnalyzer:
             if 'qualification_market_yoy_growth' in results and not results['qualification_market_yoy_growth'].empty:
                 growth_df = results['qualification_market_yoy_growth']
                 initial_rows = len(growth_df)
-                filtered_growth_df = growth_df[~growth_df['Qualification'].isin(quals_to_exclude_final)]
+                # Use qual_col here
+                filtered_growth_df = growth_df[~growth_df[qual_col].isin(quals_to_exclude_final)]
                 results['qualification_market_yoy_growth'] = filtered_growth_df
                 rows_removed = initial_rows - len(filtered_growth_df)
                 if rows_removed > 0:
@@ -907,8 +945,8 @@ class MarketAnalyzer:
             if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty:
                 detailed_df_to_filter = results['detailed_providers_market'] # Use the DF from results dict
                 initial_rows = len(detailed_df_to_filter)
-                # Filter rows where Total Volume is exactly 0
-                results['detailed_providers_market'] = detailed_df_to_filter[detailed_df_to_filter['Total Volume'] > 0]
+                # Filter rows where Total Volume is exactly 0, use total_volume_col
+                results['detailed_providers_market'] = detailed_df_to_filter[detailed_df_to_filter[total_volume_col] > 0]
                 final_rows = len(results['detailed_providers_market'])
                 rows_removed = initial_rows - final_rows
                 if rows_removed > 0:

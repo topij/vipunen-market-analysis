@@ -31,9 +31,9 @@ from ..visualization.education_visualizer import EducationVisualizer, COLOR_PALE
 logger = logging.getLogger(__name__)
 
 def generate_visualizations(
-    analysis_results: Dict[str, Any], 
-    visualizer: EducationVisualizer, 
-    analyzer: MarketAnalyzer, 
+    analysis_results: Dict[str, Any],
+    visualizer: EducationVisualizer,
+    analyzer: MarketAnalyzer,
     config: Dict[str, Any],
     data_update_date_str: str # Added parameter for data update date
 ):
@@ -48,6 +48,20 @@ def generate_visualizations(
         data_update_date_str: String representation of the data update date
     """
     logger.info("Starting visualization generation...")
+
+    # Get config column names
+    cols_out = config.get('columns', {}).get('output', {})
+    year_col = cols_out.get('year', 'Year') # Fallback to default if missing
+    qual_col = cols_out.get('qualification', 'Qualification')
+    provider_col = cols_out.get('provider', 'Provider')
+    provider_amount_col = cols_out.get('provider_amount', 'Provider Amount')
+    subcontractor_amount_col = cols_out.get('subcontractor_amount', 'Subcontractor Amount')
+    total_volume_col = cols_out.get('total_volume', 'Total Volume') # Institution's volume
+    market_total_col = cols_out.get('market_total', 'Market Total')
+    market_share_col = cols_out.get('market_share', 'Market Share (%)')
+    market_rank_col = cols_out.get('market_rank', 'Market Rank')
+    market_share_growth_col = cols_out.get('market_share_growth', 'Market Share Growth (%)')
+    market_gainer_rank_col = cols_out.get('market_gainer_rank', 'Market Gainer Rank')
 
     inst_short_name = analyzer.institution_short_name
     inst_names = analyzer.institution_names
@@ -65,12 +79,18 @@ def generate_visualizations(
 
     # --- Plot 1: Stacked Area (Total Volumes) ---
     total_volumes_df = analysis_results.get('total_volumes')
-    if total_volumes_df is not None and not total_volumes_df.empty:
+    if total_volumes_df is not None and not total_volumes_df.empty \
+            and all(c in total_volumes_df.columns for c in [year_col, provider_amount_col, subcontractor_amount_col]):
         try:
             logger.info("Generating Total Volumes Area Chart...")
+            # Create a temporary DataFrame with Finnish role names for plotting labels/colors
+            plot_df_roles = total_volumes_df.rename(columns={
+                provider_amount_col: 'järjestäjänä',
+                subcontractor_amount_col: 'hankintana'
+            })
             visualizer.create_area_chart(
-                data=total_volumes_df,
-                x_col='tilastovuosi',
+                data=plot_df_roles,
+                x_col=year_col, # Use config year column
                 y_cols=['järjestäjänä', 'hankintana'],
                 colors=[COLOR_PALETTES["roles"]["järjestäjänä"], COLOR_PALETTES["roles"]["hankintana"]],
                 labels=['järjestäjänä', 'hankintana'],
@@ -81,17 +101,16 @@ def generate_visualizations(
         except Exception as e:
             logger.error(f"Failed to generate Total Volumes plot: {e}", exc_info=True)
     else:
-        logger.warning("Skipping Total Volumes plot: Data not available.")
+        logger.warning(f"Skipping Total Volumes plot: Data not available or missing required columns ({year_col}, {provider_amount_col}, {subcontractor_amount_col}).")
 
     # --- Prepare Detailed Market Data (used by several plots) ---
-    # Data is now pre-filtered by MarketAnalyzer.analyze based on min_market_size_threshold
+    # Data is already filtered by MarketAnalyzer.analyze based on min_market_size_threshold
     detailed_df = analysis_results.get('detailed_providers_market')
     if detailed_df is None or detailed_df.empty:
         logger.warning("Skipping several plots: Detailed providers market data not available.")
         return # Exit if detailed data is missing
         
     # --- Determine Active Qualifications (for filtering institution-specific plots) ---
-    # Uses the already filtered detailed_df
     active_qualifications = []
     if max_year is not None and min_year is not None:
         # Check activity based on last_full_year and the year before it
@@ -103,8 +122,8 @@ def generate_visualizations(
             
         # Filter detailed data to the institution and the relevant years
         inst_recent_df = detailed_df[
-            (detailed_df['Provider'].isin(inst_names)) &
-            (detailed_df['Year'].isin(years_to_check_activity))
+            (detailed_df[provider_col].isin(inst_names)) &
+            (detailed_df[year_col].isin(years_to_check_activity))
         ].copy() # Use .copy() to avoid SettingWithCopyWarning later
 
         # --- Get configuration for active qualification filtering ---
@@ -112,26 +131,26 @@ def generate_visualizations(
         min_volume_sum_threshold = analysis_config.get('active_qualification_min_volume_sum', 3) # Default to 3 if not set
 
         # 1. Identify qualifications with sufficient volume over the last two years combined
-        volume_grouped = inst_recent_df.groupby('Qualification')['Total Volume'].sum()
+        volume_grouped = inst_recent_df.groupby(qual_col)[total_volume_col].sum()
         quals_with_recent_volume = set(volume_grouped[volume_grouped >= min_volume_sum_threshold].index)
         logger.debug(f"Found {len(quals_with_recent_volume)} qualifications with summed volume >= {min_volume_sum_threshold} in {years_to_check_activity} for {inst_short_name}.")
 
         # 2. Identify qualifications where institution had 100% share in BOTH years
         quals_with_100_share_both_years = set()
-        # Check only if we have two years of data to compare
-        if prev_full_year is not None and not inst_recent_df.empty and 'Market Share (%)' in inst_recent_df.columns:
+        # Check only if we have two years of data to compare and share column exists
+        if prev_full_year is not None and not inst_recent_df.empty and market_share_col in inst_recent_df.columns:
             # Ensure Market Share is numeric
-            inst_recent_df['Market Share (%)'] = pd.to_numeric(inst_recent_df['Market Share (%)'], errors='coerce')
+            inst_recent_df[market_share_col] = pd.to_numeric(inst_recent_df[market_share_col], errors='coerce')
             # Filter for 100% market share (allowing for small floating point inaccuracies)
-            inst_100_share_df = inst_recent_df[inst_recent_df['Market Share (%)'].round(2) == 100.0]
+            inst_100_share_df = inst_recent_df[inst_recent_df[market_share_col].round(2) == 100.0]
             # Count how many years each qualification had 100% share
-            share_counts = inst_100_share_df.groupby('Qualification')['Year'].nunique()
+            share_counts = inst_100_share_df.groupby(qual_col)[year_col].nunique()
             # Keep only those present in both years (count == 2)
             quals_with_100_share_both_years = set(share_counts[share_counts == 2].index)
             if quals_with_100_share_both_years:
                 logger.debug(f"Found {len(quals_with_100_share_both_years)} qualifications with 100% share in both {prev_full_year} and {last_full_year}: {quals_with_100_share_both_years}")
         
-        # 3. Final active qualifications: Volume > 1 MINUS 100% share in both years
+        # 3. Final active qualifications: Volume > threshold MINUS 100% share in both years
         active_qualifications_set = quals_with_recent_volume - quals_with_100_share_both_years
         active_qualifications = sorted(list(active_qualifications_set)) # Convert back to sorted list
         
@@ -139,26 +158,25 @@ def generate_visualizations(
     else:
         logger.warning("Could not determine active qualifications due to missing year data.")
         # Fallback: use all qualifications the institution ever offered in the filtered data
-        active_qualifications = detailed_df[detailed_df['Provider'].isin(inst_names)]['Qualification'].unique().tolist()
+        active_qualifications = detailed_df[detailed_df[provider_col].isin(inst_names)][qual_col].unique().tolist()
 
     # --- Plot 2: Line Chart (Market Share Evolution) - Loop per Qualification ---
     logger.info(f"Generating Market Share Line Charts for {len(active_qualifications)} active qualifications...")
-    # --- Iterate over ALL active qualifications --- 
-    for qual in active_qualifications: 
+    for qual in active_qualifications:
         try:
-            qual_df = detailed_df[detailed_df['Qualification'] == qual]
+            qual_df = detailed_df[detailed_df[qual_col] == qual]
             if qual_df.empty:
                 continue
                 
             # Find top M providers in the latest year for this qualification
-            latest_qual_providers = qual_df[qual_df['Year'] == plot_reference_year]
-            top_m_providers = latest_qual_providers.nlargest(6, 'Market Share (%)')['Provider'].tolist()
+            latest_qual_providers = qual_df[qual_df[year_col] == plot_reference_year]
+            top_m_providers = latest_qual_providers.nlargest(6, market_share_col)[provider_col].tolist()
             
             # Pivot data for plotting
-            plot_data = qual_df[qual_df['Provider'].isin(top_m_providers)].pivot(
-                index='Year', columns='Provider', values='Market Share (%)'
+            plot_data = qual_df[qual_df[provider_col].isin(top_m_providers)].pivot(
+                index=year_col, columns=provider_col, values=market_share_col
             )
-            plot_data.index.name = 'Year' # Ensure index has a name for the function
+            plot_data.index.name = year_col # Ensure index has a name for the function
             
             if not plot_data.empty:
                 qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30] # Create safe filename part
@@ -179,36 +197,36 @@ def generate_visualizations(
     # --- Plot 3: Heatmap (Institution's Share) ---
     try:
         logger.info("Generating Institution Market Share Heatmap...")
-        inst_share_df_raw = detailed_df[detailed_df['Provider'].isin(inst_names)]
+        inst_share_df_raw = detailed_df[detailed_df[provider_col].isin(inst_names)]
         
         # --- Aggregate data across institution variants ---
         if not inst_share_df_raw.empty:
-            # Define aggregation logic
+            # Define aggregation logic using config column names
             agg_logic = {
-                'Provider Volume (Main)': 'sum',
-                'Provider Volume (Subcontractor)': 'sum',
-                'Total Volume': 'sum',
-                'Market Total': 'first', # Should be the same for all rows in the group
+                provider_amount_col: 'sum',
+                subcontractor_amount_col: 'sum',
+                total_volume_col: 'sum',
+                market_total_col: 'first', # Should be the same for all rows in the group
                 # Keep other potentially relevant columns (take the first instance)
-                'Provider': 'first', # Keep one provider name for reference
-                'Market Share (%)': 'first', # Placeholder, will recalculate
-                'Market Rank': 'first', # Placeholder, maybe min() is better?
-                'Market Share Growth (%)': 'first', # Placeholder 
-                'Market Gainer Rank': 'first' # Placeholder
+                provider_col: 'first', # Keep one provider name for reference
+                market_share_col: 'first', # Placeholder, will recalculate
+                market_rank_col: 'first', # Placeholder, maybe min() is better?
+                market_share_growth_col: 'first', # Placeholder
+                market_gainer_rank_col: 'first' # Placeholder
             }
             # Filter agg_logic to columns actually present in the dataframe
             agg_logic = {k: v for k, v in agg_logic.items() if k in inst_share_df_raw.columns}
 
             logger.debug(f"Aggregating data for {inst_short_name} across variants...")
-            inst_share_df_agg = inst_share_df_raw.groupby(['Year', 'Qualification'], as_index=False).agg(agg_logic)
+            inst_share_df_agg = inst_share_df_raw.groupby([year_col, qual_col], as_index=False).agg(agg_logic)
             
-            # Recalculate Market Share based on aggregated volumes
-            if 'Total Volume' in inst_share_df_agg.columns and 'Market Total' in inst_share_df_agg.columns:
+            # Recalculate market share after aggregation
+            if total_volume_col in inst_share_df_agg.columns and market_total_col in inst_share_df_agg.columns:
                 # Avoid division by zero or NaN Market Total
-                valid_market_total = inst_share_df_agg['Market Total'] > 0
-                inst_share_df_agg['Market Share (%)'] = 0.0 # Initialize
-                inst_share_df_agg.loc[valid_market_total, 'Market Share (%)'] = \
-                    (inst_share_df_agg.loc[valid_market_total, 'Total Volume'] / inst_share_df_agg.loc[valid_market_total, 'Market Total'] * 100)
+                valid_market_total = inst_share_df_agg[market_total_col] > 0
+                inst_share_df_agg[market_share_col] = 0.0 # Initialize column
+                inst_share_df_agg.loc[valid_market_total, market_share_col] = \
+                    (inst_share_df_agg.loc[valid_market_total, total_volume_col] / inst_share_df_agg.loc[valid_market_total, market_total_col] * 100)
             
             inst_share_df = inst_share_df_agg # Use the aggregated dataframe
             logger.debug(f"Aggregation complete. Shape before: {inst_share_df_raw.shape}, after: {inst_share_df.shape}")
@@ -225,7 +243,7 @@ def generate_visualizations(
         #     logger.debug(f"Duplicate rows:\n{inst_share_df[duplicates]}")
         #     inst_share_df = inst_share_df.drop_duplicates(subset=['Qualification', 'Year'], keep='first')
             
-        heatmap_data = inst_share_df.pivot(index='Qualification', columns='Year', values='Market Share (%)')
+        heatmap_data = inst_share_df.pivot(index=qual_col, columns=year_col, values=market_share_col)
         # Filter heatmap data to only active qualifications
         heatmap_data = heatmap_data[heatmap_data.index.isin(active_qualifications)]
         
@@ -487,29 +505,61 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         parsed_args = parse_arguments([]) 
         args = vars(parsed_args)
     
-    # Step 1: Get configuration
+    # Step 1: Load configuration
+    logger.info("Loading configuration...")
     config = get_config()
     
+    # --- Logging Level Override (Example - Remove if not needed) ---
+    # ... (logging override code) ...
+    # --- End Logging Level Override ---
+
     # Step 2: Define parameters for the analysis
     data_file_path = args.get('data_file', config['paths']['data'])
-    institution_name = args.get('institution', config['institutions']['default']['name'])
-    institution_short_name = args.get('short_name', config['institutions']['default']['short_name'])
+    
+    # Determine the institution key to use
+    # Default name from config to compare against
+    default_institution_name = config['institutions']['default']['name']
+    # Get the value provided by argument or default
+    arg_institution_value = args.get('institution') 
+    
+    if arg_institution_value is None or arg_institution_value == default_institution_name:
+        # If no argument provided OR if the provided value is the default name, use the 'default' key
+        institution_key = 'default'
+        logger.info(f"No institution argument provided or matches default name. Using default key: '{institution_key}'")
+    else:
+        # Otherwise, assume the provided argument is the intended key
+        institution_key = arg_institution_value
+        logger.info(f"Using institution key provided via argument: '{institution_key}'")
+        # Optional: Validate if the key exists in config
+        if institution_key not in config['institutions']:
+            logger.error(f"Provided institution key '{institution_key}' not found in config['institutions']. Aborting.")
+            raise KeyError(f"Institution key '{institution_key}' not found in configuration.")
+            
+    # print(f"DEBUG: Initial institution_key from args/default: {institution_key}") # DEBUG REMOVED
+    
+    # Get short_name based on the determined key
+    institution_short_name = args.get('short_name', config['institutions'][institution_key]['short_name'])
     use_dummy = args.get('use_dummy', False)
     filter_qual_types = args.get('filter_qual_types', False)
     filter_by_inst_quals = args.get('filter_by_inst_quals', False)
     
-    # Set up institution variants
+    # Get institution variants based on the key
     if 'variants' in args and args['variants']:
         institution_variants = list(args['variants'])
-        if institution_name not in institution_variants:
-            institution_variants.append(institution_name)
+        # Add the main name corresponding to the key if not already present
+        main_name = config['institutions'][institution_key]['name']
+        if main_name not in institution_variants:
+            institution_variants.append(main_name)
     else:
-        institution_variants = config['institutions']['default']['variants']
-        if institution_name not in institution_variants:
-            institution_variants.append(institution_name)
-    
-    logger.info(f"Analyzing institution: {institution_name}")
-    logger.info(f"Institution variants: {institution_variants}")
+        # Default variants from config using the key
+        institution_variants = config['institutions'][institution_key].get('variants', [])
+        # Add the main name corresponding to the key if not already present
+        main_name = config['institutions'][institution_key]['name']
+        if main_name not in institution_variants:
+            institution_variants.append(main_name)
+
+    logger.info(f"Analyzing institution key: {institution_key} (Name: {config['institutions'][institution_key]['name']})")
+    logger.info(f"Institution variants used for matching: {institution_variants}")
     
     # Step 3: Load the raw data
     logger.info(f"Loading raw data from {data_file_path}")
@@ -543,26 +593,32 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         shorten_names=True
     )
     
-    # Filter data for the specific institution if needed
-    if filter_by_inst_quals or filter_qual_types:
-        logger.info("Filtering data based on institution and qualification types")
-        # Filter for institution data
-        institution_mask = (
-            df_clean['koulutuksenJarjestaja'].isin(institution_variants) | 
-            df_clean['hankintakoulutuksenJarjestaja'].isin(institution_variants)
-        )
-        
-        # Get qualifications offered by the institution
-        if filter_by_inst_quals:
-            inst_qualifications = df_clean[institution_mask]['tutkinto'].unique()
-            df_clean = df_clean[df_clean['tutkinto'].isin(inst_qualifications)]
-            logger.info(f"Filtered to {len(inst_qualifications)} qualifications offered by {institution_name}")
-        
-        # Filter by qualification types if requested
-        if filter_qual_types:
-            qual_types = config.get('qualification_types', ['Ammattitutkinnot', 'Erikoisammattitutkinnot'])
-            df_clean = df_clean[df_clean['tutkintotyyppi'].isin(qual_types)]
-            logger.info(f"Filtered to qualification types: {qual_types}")
+    # Filter data for the specific institution and qualifications
+    logger.info("Filtering data based on institution and offered qualifications...")
+    # Filter for institution data to identify relevant qualifications
+    logger.info(f"Filtering data for institution: {config['institutions'][institution_key]['name']} and variants...")
+    institution_mask = (
+        (df_clean[config['columns']['input']['provider']].isin(institution_variants)) |
+        (df_clean[config['columns']['input']['subcontractor']].isin(institution_variants))
+    )
+    
+    # Get qualifications offered by the institution
+    inst_qualifications = df_clean[institution_mask][config['columns']['input']['qualification']].unique()
+    
+    # Filter the main DataFrame to only include these qualifications
+    if len(inst_qualifications) > 0:
+        df_clean_filtered_by_qual = df_clean[df_clean[config['columns']['input']['qualification']].isin(inst_qualifications)].copy()
+        logger.info(f"Filtered data to {len(inst_qualifications)} qualifications offered by {config['institutions'][institution_key]['name']}. Shape before: {df_clean.shape}, after: {df_clean_filtered_by_qual.shape}")
+        df_clean = df_clean_filtered_by_qual # Update df_clean with the filtered data
+    else:
+        logger.warning(f"No qualifications found for institution {config['institutions'][institution_key]['name']} based on variants. Proceeding with data potentially unfiltered by qualification.")
+        # df_clean remains unfiltered by institution qualifications in this case
+
+    # Conditionally filter by qualification types (applied AFTER institution qual filtering)
+    if filter_qual_types:
+        qual_types = config.get('qualification_types', ['Ammattitutkinnot', 'Erikoisammattitutkinnot'])
+        df_clean = df_clean[df_clean['tutkintotyyppi'].isin(qual_types)]
+        logger.info(f"Filtered to qualification types: {qual_types}")
     
     # --- Start Analysis Block with Error Handling ---
     analysis_results = {}
@@ -570,13 +626,14 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     try:
         # Step 5: Perform analysis using the MarketAnalyzer
         logger.info("Initializing market analyzer")
-        analyzer = MarketAnalyzer(
-            data=df_clean
-        )
-        
-        # Add institution names as an attribute to be used by the analyzer
-        analyzer.institution_names = institution_variants
-        analyzer.institution_short_name = institution_short_name
+        # Create MarketAnalyzer instance
+        logger.info("Initializing MarketAnalyzer...")
+        # Pass the loaded config to the analyzer
+        analyzer = MarketAnalyzer(df_clean, cfg=config)
+        # Use institution_key (defaults to 'default') to access config
+        # Set the list of names including variants and the main name for the analyzer
+        analyzer.institution_names = institution_variants # Use the derived list
+        analyzer.institution_short_name = institution_short_name # Use the derived short name
         
         # Run the analysis
         logger.info("Running analysis")

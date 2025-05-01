@@ -136,83 +136,76 @@ def calculate_market_shares(df: pd.DataFrame, provider_names: List[str],
         logger.warning("No market share data generated")
         return pd.DataFrame()
 
-def calculate_market_share_changes(market_share_df: pd.DataFrame, 
-                                 current_year: int, 
-                                 previous_year: Optional[int] = None) -> pd.DataFrame:
+def calculate_market_share_changes(market_share_df: pd.DataFrame,
+                                 year_col: str,
+                                 qual_col: str,
+                                 provider_col: str,
+                                 market_share_col: str,
+                                 # volume_col: str # Add if volume change is needed later
+                                ) -> pd.DataFrame:
     """
-    Calculate market share changes between two years.
-    
+    Calculate year-over-year market share changes for each provider-qualification group.
+
     Args:
-        market_share_df: DataFrame with market share data
-        current_year: The current year for comparison
-        previous_year: The previous year for comparison (defaults to current_year - 1)
-        
+        market_share_df: DataFrame with market share data (output from calculate_market_shares).
+                         Must contain year, qualification, provider, and market share columns.
+        year_col: Name of the year column.
+        qual_col: Name of the qualification column.
+        provider_col: Name of the provider column.
+        market_share_col: Name of the market share column (e.g., 'market_share').
+        # volume_col: Name of the volume column (if volume change needed).
+
     Returns:
-        pd.DataFrame: DataFrame with market share changes
+        pd.DataFrame: DataFrame with year, qualification, provider, previous market share,
+                      and market share change. Returns empty if input is empty or lacks columns.
     """
     if market_share_df.empty:
         logger.warning("Empty market share data, cannot calculate changes")
         return pd.DataFrame()
-    
-    # Ensure tilastovuosi is present
-    if 'tilastovuosi' not in market_share_df.columns:
-        logger.error("Column 'tilastovuosi' not found in market share data")
+
+    required_cols = [year_col, qual_col, provider_col, market_share_col]
+    if not all(col in market_share_df.columns for col in required_cols):
+        logger.error(f"Input DataFrame missing required columns for change calculation. Need: {required_cols}")
         return pd.DataFrame()
-    
-    # Set default previous_year if not provided
-    if previous_year is None:
-        previous_year = current_year - 1
-    
-    # Check if both years exist in the data
-    if not all(year in market_share_df['tilastovuosi'].unique() for year in [current_year, previous_year]):
-        logger.warning(f"Both years {previous_year} and {current_year} must exist in the data")
-        return pd.DataFrame()
-    
-    # Get data for current and previous years
-    current_year_data = market_share_df[market_share_df['tilastovuosi'] == current_year].copy()
-    prev_year_data = market_share_df[market_share_df['tilastovuosi'] == previous_year].copy()
-    
-    # Keep only relevant columns for merging
-    current_cols = ['tutkinto', 'provider', 'market_share', 'total_volume']
-    prev_cols = ['tutkinto', 'provider', 'market_share', 'total_volume']
-    
-    current_year_data = current_year_data[['tutkinto', 'provider', 'market_share', 'total_volume']].rename(
-        columns={'market_share': 'current_share', 'total_volume': 'current_volume'})
-    prev_year_data = prev_year_data[['tutkinto', 'provider', 'market_share', 'total_volume']].rename(
-        columns={'market_share': 'previous_share', 'total_volume': 'previous_volume'})
-    
-    # Merge data for both years on qualification and provider
-    market_share_change = pd.merge(
-        current_year_data, 
-        prev_year_data, 
-        on=['tutkinto', 'provider'], 
-        how='inner'
-    )
-    
-    # Calculate market share change metrics
-    market_share_change['market_share_change'] = market_share_change['current_share'] - market_share_change['previous_share']
-    market_share_change['market_share_change_percent'] = (
-        (market_share_change['current_share'] / market_share_change['previous_share']) - 1
-    ) * 100
-    
-    # Calculate volume change metrics
-    market_share_change['volume_change'] = market_share_change['current_volume'] - market_share_change['previous_volume']
-    market_share_change['volume_change_percent'] = (
-        (market_share_change['current_volume'] / market_share_change['previous_volume']) - 1
-    ) * 100
-    
-    # Add year columns for reference
-    market_share_change['current_year'] = current_year
-    market_share_change['previous_year'] = previous_year
-    
-    # Rank gainers by qualification
-    market_share_change['gainer_rank'] = market_share_change.groupby('tutkinto')['market_share_change'].rank(ascending=False)
-    
-    # Sort by qualification and market share change (descending)
-    market_share_change = market_share_change.sort_values(by=['tutkinto', 'market_share_change'], ascending=[True, False])
-    
-    logger.info(f"Calculated market share changes for {len(market_share_change)} provider-qualification combinations")
-    return market_share_change
+
+    # Ensure data is sorted correctly for shift operation
+    market_share_df = market_share_df.sort_values(by=[qual_col, provider_col, year_col])
+
+    # Calculate previous year's market share within each group
+    market_share_df['previous_market_share'] = market_share_df.groupby(
+        [qual_col, provider_col]
+    )[market_share_col].shift(1)
+
+    # Calculate market share change (absolute difference)
+    # Fill NaN for the first year of each group
+    market_share_df['market_share_change'] = market_share_df[market_share_col] - market_share_df['previous_market_share']
+
+    # --- Optional: Calculate percentage change (handle division by zero/NaN) ---
+    # market_share_df['market_share_change_percent'] = (
+    #     (market_share_df[market_share_col] / market_share_df['previous_market_share']) - 1
+    # ) * 100
+    # market_share_df['market_share_change_percent'] = market_share_df['market_share_change_percent'].replace([np.inf, -np.inf], np.nan)
+    # market_share_df.loc[market_share_df['previous_market_share'] == 0, 'market_share_change_percent'] = np.nan # Or some indicator like 99999
+    # ---------------------------------------------------------------------
+
+    # --- Optional: Calculate gainer rank based on absolute change ---
+    # market_share_df['gainer_rank'] = market_share_df.groupby([year_col, qual_col])['market_share_change']\
+    #                                         .rank(method='min', ascending=False)
+    # --------------------------------------------------------------
+
+    # Select and return relevant columns
+    # Keep only rows where change could be calculated (i.e., not the first year for each group)
+    result_df = market_share_df.dropna(subset=['previous_market_share'])
+
+    output_cols = [
+        year_col, qual_col, provider_col,
+        'previous_market_share', 'market_share_change' # Key results needed by MarketAnalyzer
+        # Add 'market_share_change_percent', 'gainer_rank' if needed
+    ]
+
+    logger.info(f"Calculated market share changes for {len(result_df)} provider-qualification-year combinations.")
+
+    return result_df[output_cols]
 
 def calculate_total_volumes(df: pd.DataFrame, provider_names: List[str], 
                         year_col: str = 'tilastovuosi', 

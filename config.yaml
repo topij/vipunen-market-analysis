@@ -23,6 +23,7 @@ columns:
     market_rank: 'Market Rank'
     market_share_growth: 'Market Share Growth (%)'
     market_gainer: 'market gainer'
+    market_gainer_rank: 'Market Gainer Rank'
 
 # Institution information
 # Change as needed to match the institution you want to analyze
@@ -31,7 +32,6 @@ institutions:
     name: "Rastor-instituutti ry"
     short_name: "RI"
     variants:
-      - "RASTOR OY"
       - "Rastor Oy"
 
 # Qualification types to filter

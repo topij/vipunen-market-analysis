@@ -671,11 +671,13 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
             
         logger.info(f"Calculated relative output dir for export: {excel_output_dir_relative}")
         
-        # Create the full directory path locally (for plots etc.)
+        # Ensure the main output directory exists, but don't create 'plots' subdir
         # FileUtils will handle creation for the Excel file path
-        plots_dir = full_output_dir_path / "plots"
-        plots_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Ensured plots directory exists: {plots_dir}")
+        # plots_dir = full_output_dir_path / "plots"
+        # plots_dir.mkdir(parents=True, exist_ok=True)
+        # logger.info(f"Ensured plots directory exists: {plots_dir}")
+        full_output_dir_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ensured base output directory exists: {full_output_dir_path}")
         
         # Step 7: Export results to Excel (only if analysis succeeds)
         logger.info("Exporting results to Excel")
@@ -720,10 +722,12 @@ def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         # Step 8: Generate Visualizations
         try:
             logger.info("Initializing visualizer...")
-            # Pass the full path for plots dir to visualizer
+            # Pass the main output directory and institution short name
             visualizer = EducationVisualizer(
-                output_dir=plots_dir, 
-                output_format='pdf'
+                output_dir=full_output_dir_path, 
+                output_format='pdf',
+                institution_short_name=institution_short_name,
+                include_timestamp=True # Match Excel timestamping
             )
             # Pass the extracted data update date
             generate_visualizations(

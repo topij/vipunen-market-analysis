@@ -194,7 +194,7 @@ See [Data Requirements](docs/DATA_REQUIREMENTS.md) for full details.
 The analysis typically produces:
 
 1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). The names of the sheets and the column headers within them are configurable via `config.yaml` (see Configuration section). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
-2.  A **PDF report (`visualizations.pdf`)** saved in a `plots` subdirectory within the main output folder. This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
+2.  A **PDF report (`visualizations.pdf`)** saved in the main output folder. This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
     *   Total student volumes over time (Stacked Area Chart)
     *   Market share evolution for top competitors within active qualifications (Line Charts - one per qualification)
     *   Institution's market share across active qualifications over time (Heatmap)
@@ -205,11 +205,11 @@ The analysis typically produces:
 3.  Console logs detailing the analysis progress.
 
 The main output folder is named based on the institution's short name (e.g., `education_market_ri`).
-- The Excel file is saved in this folder with a timestamp.
-- The PDF report is saved within a `plots` subfolder inside the main output folder.
+- The Excel file (e.g., `ri_market_analysis_[timestamp].xlsx`) is saved in this folder.
+- The PDF report (e.g., `ri_visualizations_[timestamp].pdf`) containing all generated plots is also saved in this folder.
 Outputs are saved by default under `data/reports/`. For example:
 `data/reports/education_market_ri/ri_market_analysis_[timestamp].xlsx` and 
-`data/reports/education_market_ri/plots/visualizations.pdf`
+`data/reports/education_market_ri/ri_visualizations_[timestamp].pdf`
 
 ## Code Structure
 

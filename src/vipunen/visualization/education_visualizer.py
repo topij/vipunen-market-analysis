@@ -15,6 +15,7 @@ import plotly.graph_objects as go
 import io
 import matplotlib.image as mpimg
 import logging # Add import
+import datetime
 
 # Try importing kaleido for static image export, but don't make it a hard requirement
 kaleido_installed = False
@@ -70,7 +71,8 @@ class EducationVisualizer:
         """Wrap text to a specified width."""
         return '\n'.join(textwrap.wrap(text, width=width))
 
-    def __init__(self, style="default", style_dir=None, output_dir=None, output_format='png'):
+    def __init__(self, style="default", style_dir=None, output_dir=None, output_format='png', 
+                 institution_short_name="unknown", include_timestamp=True):
         """
         Initialize the visualizer with style settings
         
@@ -79,17 +81,22 @@ class EducationVisualizer:
             style_dir: Directory containing matplotlib style files
             output_dir: Directory to save visualizations
             output_format: Output format ('png' or 'pdf'). Defaults to 'png'.
+            institution_short_name: Short name of the institution being analyzed (for PDF filename).
+            include_timestamp: Whether to include a timestamp in the PDF filename.
         """
         self.output_dir = Path(output_dir) if output_dir else None
         self.output_format = output_format
         self.pdf_pages = None
         self._pdf_has_content = False # Track if PDF has pages added
+        self.pdf_path = None # Store the generated PDF path
 
         if self.output_format == 'pdf' and self.output_dir:
             os.makedirs(self.output_dir, exist_ok=True)
-            pdf_path = self.output_dir / "visualizations.pdf"
-            self.pdf_pages = PdfPages(pdf_path)
-            print(f"Initialized PDF output at: {pdf_path}")
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S") if include_timestamp else ""
+            pdf_filename = f"{institution_short_name.lower()}_visualizations{'_' + timestamp if timestamp else ''}.pdf"
+            self.pdf_path = self.output_dir / pdf_filename # Store the path
+            self.pdf_pages = PdfPages(self.pdf_path)
+            logger.info(f"Initialized PDF output at: {self.pdf_path}") # Use logger
         elif self.output_dir:
              os.makedirs(self.output_dir, exist_ok=True) # Ensure dir exists for PNGs too
         

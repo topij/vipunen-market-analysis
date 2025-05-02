@@ -16,6 +16,7 @@ import io
 import matplotlib.image as mpimg
 import logging # Add import
 import datetime
+from typing import Optional
 
 # Try importing kaleido for static image export, but don't make it a hard requirement
 kaleido_installed = False
@@ -267,7 +268,7 @@ class EducationVisualizer:
 
     def create_stacked_bar_chart(self, data, x_col, y_cols, colors, labels, title, 
                                 caption=None, show_totals=True, show_percentages=True,
-                                filename=None, figsize=(12, 6.75)):
+                                figsize=(12, 6.75)):
         """
         Create a stacked bar chart for comparing categories
         
@@ -281,7 +282,6 @@ class EducationVisualizer:
             caption: Optional caption
             show_totals: Whether to show total values on top of each bar
             show_percentages: Whether to show percentage in the middle of the primary bar
-            filename: Optional filename to save the visualization
             figsize: Figure size tuple (defaults to 16:9 aspect ratio)
             
         Returns:
@@ -320,14 +320,10 @@ class EducationVisualizer:
         # Add legend
         ax.legend(labels=labels)
         
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename)
-        
         return fig, ax
     
     def create_area_chart(self, data, x_col, y_cols, colors, labels, title,
-                         caption=None, stacked=True, filename=None, figsize=(12, 6.75)):
+                         caption=None, stacked=True, figsize=(12, 6.75)):
         """
         Create an area chart for time series data
         
@@ -340,7 +336,6 @@ class EducationVisualizer:
             title: Title for the chart
             caption: Optional caption
             stacked: Whether to create a stacked area chart
-            filename: Optional filename to save the visualization
             figsize: Figure size tuple (defaults to 16:9 aspect ratio)
             
         Returns:
@@ -365,14 +360,10 @@ class EducationVisualizer:
         # Add legend to bottom left with frame
         ax.legend(loc='lower left', frameon=True)
         
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename)
-        
         return fig, ax
     
     def create_line_chart(self, data, x_col, y_cols, colors, labels, title,
-                         caption=None, markers=True, filename=None, figsize=(12, 6.75)):
+                         caption=None, markers=True, figsize=(12, 6.75)):
         """
         Create a line chart for time series comparisons
         
@@ -385,7 +376,6 @@ class EducationVisualizer:
             title: Title for the chart
             caption: Optional caption
             markers: Whether to show markers on data points
-            filename: Optional filename to save the visualization
             figsize: Figure size tuple (defaults to 16:9 aspect ratio)
             
         Returns:
@@ -417,14 +407,10 @@ class EducationVisualizer:
         # Add legend
         ax.legend(loc='upper left', frameon=True, framealpha=0.9)
         
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename)
-        
         return fig, ax
     
     def create_heatmap(self, data, title, caption=None, cmap='Purples', annot=True,
-                      filename=None, figsize=(12, 6.75), fmt=".2f", wrap_width=25):
+                      figsize=(12, 6.75), fmt=".2f", wrap_width=25):
         """
         Create a heatmap for tabular data
 
@@ -434,7 +420,6 @@ class EducationVisualizer:
             caption: Optional caption
             cmap: Colormap to use
             annot: Whether to annotate cells with values
-            filename: Optional filename to save the visualization
             figsize: Figure size tuple (defaults to 16:9 aspect ratio)
             fmt: Format string for annotations
             wrap_width: Width to wrap y-axis labels
@@ -476,10 +461,6 @@ class EducationVisualizer:
         # Adjust layout
         plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to prevent caption overlap
 
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename)
-
         return fig, ax
 
     def create_heatmap_with_marginals(
@@ -495,7 +476,6 @@ class EducationVisualizer:
         heatmap_fmt=".2f",
         line_color=None, # Default to None, pick from palette if needed
         bar_palette='Blues',
-        filename=None,
         figsize=(15, 8.4375), # Adjusted figsize to ~16:9 (wider)
         wrap_width=25,
         heatmap_annot=True
@@ -515,7 +495,6 @@ class EducationVisualizer:
             heatmap_fmt: Format string for heatmap annotations.
             line_color: Color for the top line plot. Defaults to first color in main palette.
             bar_palette: Palette name or list of colors for the right bar plot.
-            filename: Optional filename to save the visualization.
             figsize: Figure size tuple (defaults to 16:9 aspect ratio).
             wrap_width: Width to wrap heatmap y-axis labels.
             heatmap_annot: Whether to annotate heatmap cells.
@@ -622,15 +601,11 @@ class EducationVisualizer:
         # Adjust layout slightly if needed - Removed subplots_adjust
         # fig.subplots_adjust(top=0.8, bottom=0.1, left=0.1, right=0.9) # Match notebook/test 
 
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename)
-
         return fig # Return only the figure object
 
     def create_horizontal_bar_chart(self, data, x_col, y_col, volume_col=None, color_col=None, title=None,
                                   caption=None, sort_by=None, # Removed show_values
-                                  filename=None, figsize=(12, 6.75), wrap_width=25, # Adjusted figsize
+                                  figsize=(12, 6.75), wrap_width=25, # Adjusted figsize
                                   y_label_detail_format="({:.0f})", # Format for detail in y-label
                                   x_label_text="Value"):
         """
@@ -645,7 +620,6 @@ class EducationVisualizer:
             title: Title for the chart
             caption: Optional caption
             sort_by: Column to sort by (default: None, assumes pre-sorted)
-            filename: Optional filename to save the visualization
             figsize: Figure size tuple (defaults to 16:9 aspect ratio)
             wrap_width: Width to wrap y-axis labels.
             y_label_detail_format: Python f-string format specifier for the detail value in y-labels.
@@ -744,14 +718,10 @@ class EducationVisualizer:
         if caption:
             fig.text(0.01, 0.01, caption, fontsize=9, color='#555555', ha='left', va='bottom')
 
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename)
-            
         return fig, ax
     
     def create_treemap(self, data, value_col, label_col, detail_col=None, title=None,
-                      caption=None, filename=None, figsize=(16, 9), wrap_width=20):
+                      caption=None, figsize=(16, 9), wrap_width=20):
         """
         Create a treemap visualization using Matplotlib and Squarify.
 
@@ -762,7 +732,6 @@ class EducationVisualizer:
             detail_col: Column name for the detail value to display inside segments (e.g., market share %).
             title: Title for the chart.
             caption: Optional caption.
-            filename: Optional filename to save the visualization.
             figsize: Figure size tuple (defaults to 16:9 aspect ratio).
             wrap_width: Width to wrap the label text inside segments.
 
@@ -889,8 +858,132 @@ class EducationVisualizer:
         # Adjust layout
         plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout to prevent caption/title overlap
 
-        # Save if filename provided
-        if filename:
-            self.save_visualization(fig, filename) # This saves the Matplotlib fig
-
         return fig, ax 
+
+    def create_volume_and_provider_count_plot(
+        self, 
+        volume_data: pd.DataFrame, 
+        count_data: pd.DataFrame, 
+        title: str, 
+        volume_title: str,
+        count_title: str, 
+        # Add parameters for column names
+        year_col: str, 
+        vol_provider_col: str,
+        vol_subcontractor_col: str,
+        count_provider_col: str,
+        count_subcontractor_col: str,
+        caption: Optional[str] = None,
+        figsize=(16, 6) # Wider figure to accommodate two plots
+    ):
+        """
+        Creates a figure with two subplots:
+        - Left: Stacked bar chart of student volumes (Provider vs Subcontractor).
+        - Right: Grouped bar chart of unique provider and subcontractor counts.
+
+        Args:
+            volume_data: DataFrame with yearly volume data.
+            count_data: DataFrame with yearly unique counts.
+            title: Overall title for the figure.
+            volume_title: Title for the left (volume) subplot.
+            count_title: Title for the right (count) subplot.
+            # Add descriptions for column name parameters
+            year_col: Name of the column containing the year.
+            vol_provider_col: Name of the column for volume as provider.
+            vol_subcontractor_col: Name of the column for volume as subcontractor.
+            count_provider_col: Name of the column for unique provider count.
+            count_subcontractor_col: Name of the column for unique subcontractor count.
+            caption: Optional caption for the figure.
+            figsize: Figure size tuple.
+
+        Returns:
+            matplotlib.figure.Figure, tuple[matplotlib.axes.Axes, matplotlib.axes.Axes]: The figure and the two axes objects.
+        """
+        fig, (ax_vol, ax_count) = plt.subplots(1, 2, figsize=figsize, gridspec_kw={'width_ratios': [2, 1]}) # Give more space to volume plot
+        
+        # --- Left Plot: Volume Stacked Bar --- 
+        # Use passed-in column names
+        # vol_year_col = 'Year' # Removed
+        # vol_provider_col = 'Provider Amount' # Removed
+        # vol_subcontractor_col = 'Subcontractor Amount' # Removed
+        
+        # Use config colors if possible, otherwise defaults
+        provider_color = COLOR_PALETTES.get('roles', {}).get('järjestäjänä', '#7dc35a') # Green
+        subcontractor_color = COLOR_PALETTES.get('roles', {}).get('hankintana', '#e86b3d') # Orange/Configured blue?
+                                                                                           # Using orange to match example image
+        
+        if not volume_data.empty and all(c in volume_data.columns for c in [year_col, vol_provider_col, vol_subcontractor_col]):
+            volume_data = volume_data.sort_values(year_col)
+            years_str = volume_data[year_col].astype(str)
+            
+            # Plot bars using passed-in column names
+            ax_vol.bar(years_str, volume_data[vol_provider_col], label='järjestäjänä', color=provider_color)
+            ax_vol.bar(years_str, volume_data[vol_subcontractor_col], bottom=volume_data[vol_provider_col], label='hankintana', color=subcontractor_color)
+            
+            ax_vol.set_ylabel("Netto-opiskelijamäärä")
+            ax_vol.legend(loc='center left')
+            ax_vol.set_title(volume_title, fontsize=14, loc='left', pad=15) # Subplot title
+        else:
+            logger.warning("Volume data is empty or missing required columns for the left subplot.")
+            ax_vol.set_title("(Volume Data Missing)", fontsize=14, loc='left', pad=15)
+
+        # Apply common formatting (partial)
+        ax_vol.spines['top'].set_visible(False)
+        ax_vol.spines['right'].set_visible(False)
+        ax_vol.spines['bottom'].set_color('#cccccc')
+        ax_vol.spines['left'].set_color('#cccccc')
+        ax_vol.grid(axis='y', linestyle='-', alpha=0.5)
+        ax_vol.tick_params(axis='x', length=0)
+        ax_vol.tick_params(axis='y', colors='#555555')
+        ax_vol.set_ylim(bottom=0)
+        ax_vol.xaxis.set_major_locator(ticker.MaxNLocator(integer=True)) # Ensure integer years if axis allows
+
+        # --- Right Plot: Provider Count Grouped Bar ---
+        # Use passed-in column names
+        # count_year_col = 'Year' # Removed
+        # count_provider_col = 'Unique_Providers_Count' # Removed
+        # count_subcontractor_col = 'Unique_Subcontractors_Count' # Removed
+        
+        # Use the same colors as volume plot for consistency
+        provider_count_color = provider_color
+        subcontractor_count_color = subcontractor_color
+
+        if not count_data.empty and all(c in count_data.columns for c in [year_col, count_provider_col, count_subcontractor_col]):
+            count_data = count_data.sort_values(year_col)
+            years_str = count_data[year_col].astype(str)
+            x = np.arange(len(years_str))  # the label locations
+            width = 0.35  # the width of the bars
+
+            # Use passed-in column names
+            rects1 = ax_count.bar(x - width/2, count_data[count_provider_col], width, label='järjestäjiä', color=provider_count_color)
+            rects2 = ax_count.bar(x + width/2, count_data[count_subcontractor_col], width, label='hankintoja', color=subcontractor_count_color)
+
+            ax_count.set_ylabel("Kouluttajien määrä")
+            ax_count.set_xticks(x)
+            ax_count.set_xticklabels(years_str)
+            ax_count.legend(loc='upper right')
+            ax_count.set_title(count_title, fontsize=14, loc='left', pad=15) # Subplot title
+        else:
+            logger.warning("Count data is empty or missing required columns for the right subplot.")
+            ax_count.set_title("(Count Data Missing)", fontsize=14, loc='left', pad=15)
+
+        # Apply common formatting (partial)
+        ax_count.spines['top'].set_visible(False)
+        ax_count.spines['right'].set_visible(False)
+        ax_count.spines['bottom'].set_color('#cccccc')
+        ax_count.spines['left'].set_color('#cccccc')
+        ax_count.grid(axis='y', linestyle='-', alpha=0.5)
+        ax_count.tick_params(axis='x', length=0)
+        ax_count.tick_params(axis='y', colors='#555555')
+        ax_count.set_ylim(bottom=0)
+        # ax_count.xaxis.set_major_locator(ticker.MaxNLocator(integer=True)) # Already handled by set_xticks
+        
+        # --- Overall Figure Formatting ---
+        fig.suptitle(title, fontsize=18, fontweight='bold', y=0.98, ha='center') # Centered super title
+        if caption:
+            # Adjust caption position for two subplots
+            fig.text(0.5, 0.01, caption, fontsize=9, color='#555555', ha='center', va='bottom') 
+            
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout
+
+        return fig, (ax_vol, ax_count) 

@@ -90,16 +90,18 @@ def generate_visualizations(
                 provider_amount_col: 'järjestäjänä',
                 subcontractor_amount_col: 'hankintana'
             })
-            visualizer.create_area_chart(
+            fig, _ = visualizer.create_area_chart( # Capture fig
                 data=plot_df_roles,
                 x_col=year_col, # Use config year column
                 y_cols=['järjestäjänä', 'hankintana'],
                 colors=[COLOR_PALETTES["roles"]["järjestäjänä"], COLOR_PALETTES["roles"]["hankintana"]],
                 labels=['järjestäjänä', 'hankintana'],
-                title=f"{inst_short_name} opiskelijamäärät vuosina {min_year}-{max_year}",
+                title=f"{inst_short_name} netto-opiskelijamäärä vuosina {min_year}-{max_year}",
                 caption=base_caption,
-                filename=f"{inst_short_name}_total_volumes_area"
+                stacked=True
             )
+            visualizer.save_visualization(fig, f"{inst_short_name}_total_volumes_area") # Save separately
+            plt.close(fig) # Close the figure after saving
         except Exception as e:
             logger.error(f"Failed to generate Total Volumes plot: {e}", exc_info=True)
     else:
@@ -190,9 +192,10 @@ def generate_visualizations(
                     labels=top_m_providers,
                     title=f"{qual}: Markkinaosuus (%)",
                     caption=base_caption,
-                    filename=f"{inst_short_name}_{qual_filename_part}_market_share_lines"
+                    markers=True
                 )
-                # plt.close(fig) # Close figure after saving - Removed for PDF output
+                visualizer.save_visualization(fig, f"{inst_short_name}_{qual_filename_part}_market_share_lines") # Save separately
+                plt.close(fig) # Close the figure after saving
         except Exception as e:
             logger.error(f"Failed to generate Market Share line plot for {qual}: {e}", exc_info=True)
 
@@ -255,10 +258,10 @@ def generate_visualizations(
                 data=heatmap_data,
                 title=f"{inst_short_name}: markkinaosuus tutkinnoittain",
                 caption=base_caption,
-                filename=f"{inst_short_name}_share_heatmap",
                 cmap='Blues' # Example: Use Blues colormap
             )
-            # plt.close(fig) # Close figure - Removed for PDF output
+            visualizer.save_visualization(fig, f"{inst_short_name}_share_heatmap") # Save separately
+            plt.close(fig) # Close the figure after saving
     except Exception as e:
         logger.error(f"Failed to generate Institution Share heatmap: {e}", exc_info=True)
 
@@ -292,10 +295,10 @@ def generate_visualizations(
     #             # caption=base_caption,
     #             caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else ""),
     # 
-    #             filename=f"{inst_short_name}_share_heatmap_marginals",
     #             cmap='Blues'
     #         )
-    #         # plt.close(fig) # Close figure - Removed for PDF output
+    #         visualizer.save_visualization(fig, f"{inst_short_name}_share_heatmap_marginals") # Save separately
+    #         plt.close(fig) # Close the figure after saving
     #     except Exception as e:
     #         logger.error(f"Failed to generate Heatmap with Marginals: {e}", exc_info=True)
     # else:
@@ -323,11 +326,12 @@ def generate_visualizations(
                     volume_col=market_total_col,
                     title=f"Tutkinnot: nousijat ja laskijat (YoY: {plot_reference_year-1}-{plot_reference_year})",
                     caption=base_caption,
-                    filename=f"{inst_short_name}_qualification_growth_bar",
+                    sort_by=market_total_growth_col,
                     x_label_text="Tutkinnon markkinakasvu (%)",
                     y_label_detail_format="({:.0f})" # Format volume as integer
                 )
-                # plt.close(fig) # Close figure - Removed for PDF output
+                visualizer.save_visualization(fig, f"{inst_short_name}_qualification_growth_bar") # Save separately
+                plt.close(fig) # Close the figure after saving
         except Exception as e:
             logger.error(f"Failed to generate Qualification Growth plot: {e}", exc_info=True)
     else:
@@ -427,11 +431,11 @@ def generate_visualizations(
                         volume_col=market_share_col, # Show current market share in label
                         title=f"{qual}: suurimmat nousijat ja laskijat ({plot_reference_year})",
                         caption=plot_caption, # Use the potentially extended caption
-                        filename=f"{inst_short_name}_{qual_filename_part}_gainer_loser_bar",
                         x_label_text="Markkinaosuuden vuosikasvu (%)",
                         y_label_detail_format="({:.1f} %)"
                     )
-                    # plt.close(fig) # Close figure after saving - Removed for PDF output
+                    visualizer.save_visualization(fig, f"{inst_short_name}_{qual_filename_part}_gainer_loser_bar") # Save separately
+                    plt.close(fig) # Close the figure after saving
         except Exception as e:
             logger.error(f"Failed to generate Gainer/Loser plot for {qual}: {e}", exc_info=True)
 
@@ -476,16 +480,82 @@ def generate_visualizations(
                     label_col=qual_col, 
                     detail_col=market_share_col, # Show institution's share inside
                     title=f"{inst_short_name}: Tutkintojen markkinaosuudet ({plot_reference_year})",
-                    caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else ""),
-                    filename=f"{inst_short_name}_qualification_treemap"
+                    caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else "")
                 )
-                # No need for update_traces or add_plotly_figure_to_pdf as saving is handled internally for Matplotlib figs
-                # plt.close(fig) # Close figure - Keep commented out as saving might happen within create_treemap or handled by PDFPages
+                visualizer.save_visualization(fig, f"{inst_short_name}_qualification_treemap") # Save separately
+                plt.close(fig) # Close the figure after saving
 
         except Exception as e:
             logger.error(f"Failed to generate Treemap plot: {e}", exc_info=True)
     else:
         logger.warning("Skipping Treemap plot: Data not available for the reference year.")
+
+    # --- Plot 8: Combined Volume / Provider Count Plot ---
+    logger.info("Generating Volume / Provider Count Plot...")
+    volume_df = analysis_results.get('total_volumes') # Use the overall institution volume
+    count_df = analysis_results.get('provider_counts_by_year') # Use the newly calculated counts
+
+    # --- DEBUGGING: Log DataFrame status before check ---
+    vol_shape = volume_df.shape if volume_df is not None else None
+    count_shape = count_df.shape if count_df is not None else None
+    # Use INFO level for these logs
+    logger.info(f"Plot 8 Check: volume_df shape: {vol_shape}")
+    logger.info(f"Plot 8 Check: volume_df columns: {volume_df.columns.tolist() if volume_df is not None else None}")
+    logger.info(f"Plot 8 Check: count_df shape: {count_shape}")
+    logger.info(f"Plot 8 Check: count_df columns: {count_df.columns.tolist() if count_df is not None else None}")
+    # --- END DEBUGGING ---
+
+    if volume_df is not None and not volume_df.empty and count_df is not None and not count_df.empty:
+        # --- DEBUGGING: Log entry into plotting block ---
+        logger.debug("Entering Volume/Provider Count plotting block.")
+        try:
+            # Get column names from config
+            year_col_name = config['columns']['output']['year']
+            provider_amount_col_name = config['columns']['output']['provider_amount']
+            subcontractor_amount_col_name = config['columns']['output']['subcontractor_amount']
+            # Use the same default keys used in MarketAnalyzer if not in config
+            provider_count_col_name = config['columns']['output'].get('unique_providers_count', 'Unique_Providers_Count')
+            subcontractor_count_col_name = config['columns']['output'].get('unique_subcontractors_count', 'Unique_Subcontractors_Count')
+            
+            # Merge dataframes on Year to ensure alignment, using an outer join to keep all years
+            # Assuming both use the standard output year column name ('Year')
+            # merged_data = pd.merge(volume_df, count_df, on=year_col_name, how='outer') # Merge not needed, pass separately
+            # Sort by year just in case
+            # merged_data = merged_data.sort_values(year_col_name)
+
+            # Prepare data for plotting (fill potential NaNs after merge, e.g., with 0?)
+            # Let the plotting function handle missing data internally for now.
+
+            plot_title = f"{inst_short_name}: Opiskelijamäärät ja kouluttajamarkkina ({min_year}-{max_year})"
+            volume_subplot_title = "Netto-opiskelijamäärä"
+            count_subplot_title = "Uniikit kouluttajat markkinassa"
+            # Use the standard base caption
+            plot_caption = base_caption + f". Kouluttajamäärä perustuu tutkintoihin, joita {inst_short_name} tarjoaa."
+
+            fig, _ = visualizer.create_volume_and_provider_count_plot(
+                volume_data=volume_df, # Pass original volume df
+                count_data=count_df,   # Pass original count df
+                title=plot_title,
+                volume_title=volume_subplot_title,
+                count_title=count_subplot_title,
+                # Pass column names from config
+                year_col=year_col_name,
+                vol_provider_col=provider_amount_col_name,
+                vol_subcontractor_col=subcontractor_amount_col_name,
+                count_provider_col=provider_count_col_name,
+                count_subcontractor_col=subcontractor_count_col_name,
+                caption=plot_caption
+            )
+            visualizer.save_visualization(fig, f"{inst_short_name}_volume_provider_counts")
+            plt.close(fig)
+
+        except Exception as e:
+            logger.error(f"Failed to generate Volume/Provider Count plot: {e}", exc_info=True)
+            # Optionally close the fig if it exists and error occurred before saving
+            if 'fig' in locals() and plt.fignum_exists(fig.number):
+                plt.close(fig)
+    else:
+        logger.warning("Skipping Volume/Provider Count plot: Required volume or count data is missing.")
 
     logger.info("Visualization generation completed.")
 

@@ -620,6 +620,68 @@ class MarketAnalyzer:
 
         return market_totals[[qual_col, year_col, market_total_col, market_growth_col]]
 
+    def _calculate_provider_counts_by_year(self) -> pd.DataFrame:
+        """
+        Calculate the yearly count of unique providers and subcontractors operating
+        within the qualifications offered by the analyzed institution.
+
+        Returns:
+            pd.DataFrame: Counts per year (Columns: Year, Unique_Providers_Count, Unique_Subcontractors_Count).
+        """
+        if self.data.empty or self.min_year is None or self.max_year is None:
+            return pd.DataFrame(columns=[self.cols_out['year'], 'Unique_Providers_Count', 'Unique_Subcontractors_Count'])
+
+        year_in_col = self.cols_in['year']
+        qual_in_col = self.cols_in['qualification']
+        provider_in_col = self.cols_in['provider']
+        subcontractor_in_col = self.cols_in['subcontractor']
+        year_out_col = self.cols_out['year']
+
+        # 1. Identify qualifications offered by the target institution
+        inst_mask = (
+            (self.data[provider_in_col].isin(self.institution_names)) |
+            (self.data[subcontractor_in_col].isin(self.institution_names))
+        )
+        inst_quals = self.data.loc[inst_mask, qual_in_col].unique()
+        
+        if len(inst_quals) == 0:
+            self.logger.warning("No qualifications found for the target institution. Cannot calculate provider counts.")
+            return pd.DataFrame(columns=[year_out_col, 'Unique_Providers_Count', 'Unique_Subcontractors_Count'])
+            
+        self.logger.debug(f"Identified {len(inst_quals)} qualifications offered by {self.institution_short_name} for provider counting.")
+        # Add INFO log for qualification count
+        self.logger.info(f"Provider Count Calc: Found {len(inst_quals)} qualifications for {self.institution_short_name}.")
+
+        # 2. Filter the original data to include only these qualifications
+        market_data_for_inst_quals = self.data[self.data[qual_in_col].isin(inst_quals)].copy()
+        
+        # Add INFO log for filtered data shape
+        self.logger.info(f"Provider Count Calc: Shape of data filtered by institution's qualifications: {market_data_for_inst_quals.shape}")
+        
+        if market_data_for_inst_quals.empty:
+             self.logger.warning("Filtered market data for institution's qualifications is empty.")
+             return pd.DataFrame(columns=[year_out_col, 'Unique_Providers_Count', 'Unique_Subcontractors_Count'])
+
+        # 3. Group by year and count unique non-null providers/subcontractors
+        # Use output config names for the new count columns
+        provider_count_col_name = self.cols_out.get('unique_providers_count', 'Unique_Providers_Count')
+        subcontractor_count_col_name = self.cols_out.get('unique_subcontractors_count', 'Unique_Subcontractors_Count')
+        
+        provider_counts = market_data_for_inst_quals.groupby(year_in_col).agg(
+            # Use the dynamically determined column names
+            **{provider_count_col_name: (provider_in_col, lambda x: x.nunique())},
+            **{subcontractor_count_col_name: (subcontractor_in_col, lambda x: x.nunique())}
+        ).reset_index()
+        
+        # Rename year column to output standard
+        provider_counts = provider_counts.rename(columns={year_in_col: year_out_col})
+        
+        # Add INFO log for final counts shape
+        self.logger.info(f"Provider Count Calc: Final provider counts shape: {provider_counts.shape}")
+        self.logger.info("Successfully calculated provider counts by year for institution's qualifications.")
+        
+        return provider_counts
+
     def get_all_results(self) -> Dict[str, pd.DataFrame]:
         """
         Run all analyses and return a dictionary of results.
@@ -633,6 +695,7 @@ class MarketAnalyzer:
                 - 'qualification_cagr'
                 - 'overall_total_market_volume' (Series: Index=Year, Values=Total Volume)
                 - 'qualification_market_yoy_growth'
+                - 'provider_counts_by_year' # Added
         """
         self.logger.info(f"Starting market analysis for: {self.institution_names}")
 
@@ -640,7 +703,6 @@ class MarketAnalyzer:
         results = {}
         results['total_volumes'] = self.calculate_total_volumes()
         results['volumes_by_qualification'] = self.calculate_volumes_by_qualification()
-        results['market_shares'] = self.calculate_providers_market()
         results['detailed_providers_market'] = self.calculate_providers_market()
         results['qualification_cagr'] = self.calculate_qualification_cagr()
         results['overall_total_market_volume'] = self.calculate_overall_total_market_volume()
@@ -653,6 +715,18 @@ class MarketAnalyzer:
                 results['detailed_providers_market']
             )
         results['qualification_market_yoy_growth'] = qualification_market_yoy_growth_df # Store potentially unfiltered growth
+
+        # --- Calculate Provider Counts --- 
+        try:
+            provider_counts_df = self._calculate_provider_counts_by_year()
+            results['provider_counts_by_year'] = provider_counts_df
+        except Exception as e:
+            self.logger.error(f"Failed to calculate provider counts by year: {e}", exc_info=True)
+            # Ensure the key exists even if calculation fails
+            results['provider_counts_by_year'] = pd.DataFrame(columns=[
+                self.cols_out['year'], 'Unique_Providers_Count', 'Unique_Subcontractors_Count'
+            ])
+        # --- End Provider Counts --- 
 
         # --- Filter results based on minimum market size threshold and institution inactivity ---
         quals_to_exclude_low_volume = set()
@@ -795,179 +869,30 @@ class MarketAnalyzer:
     def analyze(self, min_market_size_threshold: int = 5) -> Dict[str, pd.DataFrame]:
         """
         Perform the complete market analysis and return all results.
+        This method simply calls get_all_results now, filtering logic is within get_all_results.
 
         Args:
             min_market_size_threshold (int): Minimum total market size for a qualification
                                              in the latest year to be included in the results.
                                              Defaults to 5.
+                                             (Note: Threshold currently applied within get_all_results)
 
         Returns:
             Dict[str, pd.DataFrame]: Dictionary containing results for:
                 - 'total_volumes'
                 - 'volumes_by_qualification'
-                - 'market_shares' (Note: This is the simplified YoY view for all providers)
+                # - 'market_shares' (Removed)
                 - 'detailed_providers_market' (Detailed view for relevant qualifications/providers/years)
                 - 'qualification_cagr'
                 - 'overall_total_market_volume' (Series: Index=Year, Values=Total Volume)
                 - 'qualification_market_yoy_growth'
+                - 'provider_counts_by_year'
         """
-        self.logger.info(f"Starting market analysis for: {self.institution_names}")
-
-        # Perform core calculations
-        results = {}
-        results['total_volumes'] = self.calculate_total_volumes()
-        results['volumes_by_qualification'] = self.calculate_volumes_by_qualification()
-        results['market_shares'] = self.calculate_providers_market()
-        results['detailed_providers_market'] = self.calculate_providers_market()
-        results['qualification_cagr'] = self.calculate_qualification_cagr()
-        results['overall_total_market_volume'] = self.calculate_overall_total_market_volume()
-
-        # Calculate qualification market growth based on detailed provider market data
-        # Do this *before* filtering detailed_providers_market, so growth calculation has full context
-        qualification_market_yoy_growth_df = pd.DataFrame()
-        if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty:
-            qualification_market_yoy_growth_df = self.calculate_qualification_market_yoy_growth(
-                results['detailed_providers_market']
-            )
-        results['qualification_market_yoy_growth'] = qualification_market_yoy_growth_df # Store potentially unfiltered growth
-
-        # --- Filter results based on minimum market size threshold and institution inactivity ---
-        quals_to_exclude_low_volume = set()
-        quals_to_exclude_inactive = set()
+        self.logger.info(f"Calling get_all_results to perform market analysis for: {self.institution_names}")
+        # The filtering based on threshold is now handled within get_all_results
+        return self.get_all_results()
         
-        # Determine the last full year (usually max_year - 1, unless only one year exists)
-        last_full_year = self.max_year
-        if self.max_year is not None and self.min_year is not None and self.max_year > self.min_year:
-            last_full_year = self.max_year - 1 
-        
-        # Check if we have detailed data and at least one reference year (last_full_year or max_year)
-        if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty and (last_full_year is not None or self.max_year is not None):
-            detailed_df = results['detailed_providers_market'] # Get the original, unfiltered detailed data
-            # Use config output column names
-            year_col = self.cols_out['year']
-            qual_col = self.cols_out['qualification']
-            market_total_col = self.cols_out['market_total']
-            total_volume_col = self.cols_out['total_volume']
-            provider_col = self.cols_out['provider'] # Get provider column name from output config
-            inst_names_list = self.institution_names
-            inst_short_name_log = self.institution_short_name
-
-            # --- Calculate Qualifications to Exclude (for specific filtering later) ---
-            # 1. Check for Low Total Market Volume
-            # ... (existing low volume check logic - calculates quals_to_exclude_low_volume) ...
-            last_year_totals = pd.DataFrame()
-            if last_full_year is not None and last_full_year in detailed_df[year_col].unique():
-                 last_year_totals = detailed_df[detailed_df[year_col] == last_full_year][[qual_col, market_total_col]].drop_duplicates()
-            current_year_totals = pd.DataFrame()
-            if self.max_year is not None and self.max_year in detailed_df[year_col].unique():
-                current_year_totals = detailed_df[detailed_df[year_col] == self.max_year][[qual_col, market_total_col]].drop_duplicates()
-            quals_below_last = set()
-            if not last_year_totals.empty:
-                 # Access threshold from config
-                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5)
-                 quals_below_last = set(last_year_totals[last_year_totals[market_total_col] < threshold][qual_col].unique())
-            quals_below_current = set()
-            if not current_year_totals.empty:
-                 # Access threshold from config
-                 threshold = self.cfg.get('analysis', {}).get('min_market_size_threshold', 5)
-                 quals_below_current = set(current_year_totals[current_year_totals[market_total_col] < threshold][qual_col].unique())
-            log_year_text_low_vol = ""
-            if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
-                quals_to_exclude_low_volume = quals_below_last.intersection(quals_below_current)
-                log_year_text_low_vol = f"BOTH {last_full_year} and {self.max_year}"
-            elif quals_below_current:
-                 quals_to_exclude_low_volume = quals_below_current
-                 log_year_text_low_vol = f"{self.max_year}"
-            elif quals_below_last:
-                 quals_to_exclude_low_volume = quals_below_last
-                 log_year_text_low_vol = f"{last_full_year}"
-            else:
-                 quals_to_exclude_low_volume = set()
-                 log_year_text_low_vol = "relevant years"
-            if quals_to_exclude_low_volume:
-                self.logger.info(f"Identified {len(quals_to_exclude_low_volume)} qualifications with total market size < {threshold} in {log_year_text_low_vol}: {list(quals_to_exclude_low_volume)}")
-            else:
-                self.logger.info(f"No qualifications met the low total market size threshold ({threshold}) for exclusion.")
-
-            # 2. Check for Institution Inactivity (Using variants `inst_names_list`, threshold >= 1)
-            # ... (existing inactivity check logic - calculates quals_to_exclude_inactive) ...
-            inst_quals_last = set()
-            if last_full_year is not None and last_full_year in detailed_df[year_col].unique():
-                # Use provider_col variable here
-                inst_data_last = detailed_df[(detailed_df[year_col] == last_full_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df[total_volume_col] >= 1)]
-                inst_quals_last = set(inst_data_last[qual_col].unique())
-            inst_quals_current = set()
-            if self.max_year is not None and self.max_year in detailed_df[year_col].unique():
-                # Use provider_col variable here
-                inst_data_current = detailed_df[(detailed_df[year_col] == self.max_year) & (detailed_df[provider_col].isin(inst_names_list)) & (detailed_df[total_volume_col] >= 1)]
-                inst_quals_current = set(inst_data_current[qual_col].unique())
-            # Use provider_col variable here
-            all_inst_quals = set(detailed_df[detailed_df[provider_col].isin(inst_names_list)][qual_col].unique())
-            log_year_text_inactive = ""
-            if last_full_year is not None and self.max_year is not None and last_full_year != self.max_year:
-                inactive_in_both = all_inst_quals - inst_quals_last - inst_quals_current
-                quals_to_exclude_inactive = inactive_in_both
-                log_year_text_inactive = f"BOTH {last_full_year} and {self.max_year}"
-            elif self.max_year is not None:
-                 inactive_in_current = all_inst_quals - inst_quals_current
-                 quals_to_exclude_inactive = inactive_in_current
-                 log_year_text_inactive = f"{self.max_year}"
-            elif last_full_year is not None:
-                 inactive_in_last = all_inst_quals - inst_quals_last
-                 quals_to_exclude_inactive = inactive_in_last
-                 log_year_text_inactive = f"{last_full_year}"
-            else:
-                 quals_to_exclude_inactive = set()
-                 log_year_text_inactive = "relevant years"
-            if quals_to_exclude_inactive:
-                self.logger.info(f"Identified {len(quals_to_exclude_inactive)} qualifications as inactive (volume < 1) for {inst_short_name_log} in {log_year_text_inactive}: {list(quals_to_exclude_inactive)}")
-            else:
-                self.logger.info(f"No qualifications identified as inactive for {inst_short_name_log} (volume < 1 in relevant years)." )
-
-            # --- Apply Filtering Selectively --- 
-            quals_to_exclude_final = list(quals_to_exclude_low_volume.union(quals_to_exclude_inactive))
-            if quals_to_exclude_final:
-                 self.logger.info(f"Combined list of {len(quals_to_exclude_final)} qualifications identified for potential exclusion (low volume or inactive): {quals_to_exclude_final}")
-            
-            # 1. Filter Qualification Market YoY Growth (Apply combined filter)
-            if 'qualification_market_yoy_growth' in results and not results['qualification_market_yoy_growth'].empty:
-                growth_df = results['qualification_market_yoy_growth']
-                initial_rows = len(growth_df)
-                # Use qual_col here
-                filtered_growth_df = growth_df[~growth_df[qual_col].isin(quals_to_exclude_final)]
-                results['qualification_market_yoy_growth'] = filtered_growth_df
-                rows_removed = initial_rows - len(filtered_growth_df)
-                if rows_removed > 0:
-                    self.logger.info(f"Filtered {rows_removed} rows from 'qualification_market_yoy_growth' based on combined exclusion list.")
-            
-            # 2. Filter Detailed Provider Market (Remove Zero Volume Rows ONLY)
-            #    Do NOT filter by quals_to_exclude_final here. Keep all quals institution participated in.
-            if 'detailed_providers_market' in results and not results['detailed_providers_market'].empty:
-                detailed_df_to_filter = results['detailed_providers_market'] # Use the DF from results dict
-                initial_rows = len(detailed_df_to_filter)
-                # Filter rows where Total Volume is exactly 0, use total_volume_col
-                results['detailed_providers_market'] = detailed_df_to_filter[detailed_df_to_filter[total_volume_col] > 0]
-                final_rows = len(results['detailed_providers_market'])
-                rows_removed = initial_rows - final_rows
-                if rows_removed > 0:
-                    self.logger.info(f"Removed {rows_removed} zero-volume rows from 'detailed_providers_market'. Qualification filtering NOT applied.")
-                else:
-                     self.logger.info("No zero-volume rows found in 'detailed_providers_market'. Qualification filtering NOT applied.")
-
-            # 3. Volumes by Qualification (No additional filtering by low volume/inactivity)
-            if 'volumes_by_qualification' in results and not results['volumes_by_qualification'].empty:
-                 self.logger.info("'volumes_by_qualification' remains unfiltered by low volume/inactivity criteria.")
-                 # Optional: could add filtering here to only show quals where inst_volume >=1 if needed
-
-            # 4. Qualification CAGR (No filtering)
-            if 'qualification_cagr' in results and not results['qualification_cagr'].empty:
-                 self.logger.info("'qualification_cagr' remains unfiltered.")
-                 
-        else: # Case where no detailed_providers_market data exists or only one year
-            self.logger.warning("Skipping low market size and inactivity filtering due to missing/insufficient detailed market data.")
-
-        self.logger.info(f"Market analysis complete.")
-        return results
+        # REMOVED DUPLICATED LOGIC FROM HERE
 
     def export_to_csv(self, base_path: str, min_market_size_threshold: int = 5) -> Dict[str, str]:
         """

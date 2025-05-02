@@ -63,8 +63,7 @@ def parse_arguments(args_list: Optional[List[str]] = None) -> argparse.Namespace
     parser.add_argument(
         "--output-dir", "-o",
         dest="output_dir",
-        help=f"Base directory for output files, default: {config['paths'].get('output', 'data/reports')}",
-        default=None
+        help=f"Base directory for output files, default: {config['paths'].get('output', 'data/reports')}"
     )
     
     parser.add_argument(

@@ -987,3 +987,134 @@ class EducationVisualizer:
         plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust layout
 
         return fig, (ax_vol, ax_count) 
+
+    def create_bcg_matrix(
+        self,
+        data: pd.DataFrame,
+        growth_col: str,
+        share_col: str,
+        size_col: str,
+        label_col: str,
+        title: str,
+        caption: Optional[str] = None,
+        avg_growth: Optional[float] = None,
+        share_threshold: float = 1.0,
+        max_bubble_size: int = 2000,
+        figsize=(12, 12) # BCG often square
+    ):
+        """
+        Creates a BCG Growth-Share Matrix plot (Bubble Chart).
+
+        Args:
+            data: DataFrame containing BCG data (qualification, growth, relative share, volume).
+            growth_col: Column name for Market Growth Rate (%).
+            share_col: Column name for Relative Market Share.
+            size_col: Column name for Institution Volume (determines bubble size).
+            label_col: Column name for bubble labels (qualification name).
+            title: Title for the chart.
+            caption: Optional caption for the figure.
+            avg_growth: Market growth rate threshold (Y-axis divider). If None, calculates mean from data.
+            share_threshold: Relative market share threshold (X-axis divider). Defaults to 1.0.
+            max_bubble_size: Maximum size for bubbles in the scatter plot.
+            figsize: Figure size tuple.
+
+        Returns:
+            matplotlib.figure.Figure, matplotlib.axes.Axes: The figure and axes object.
+        """
+        fig, ax = plt.subplots(figsize=figsize)
+
+        if data.empty:
+            logger.warning("BCG data is empty. Cannot create plot.")
+            ax.text(0.5, 0.5, "No data available for BCG Matrix", ha='center', va='center')
+            return fig, ax
+
+        # Prepare data
+        df = data.copy()
+        df[growth_col] = pd.to_numeric(df[growth_col], errors='coerce')
+        df[share_col] = pd.to_numeric(df[share_col], errors='coerce')
+        df[size_col] = pd.to_numeric(df[size_col], errors='coerce')
+
+        # Handle potential infinities in relative share (e.g., from 100% market share)
+        # Replace inf with a value slightly larger than the max finite share or a fixed large value
+        max_finite_share = df.loc[np.isfinite(df[share_col]), share_col].max()
+        inf_replacement = max(max_finite_share * 1.1, share_threshold * 2) if pd.notna(max_finite_share) else share_threshold * 2
+        df[share_col] = df[share_col].replace([np.inf], inf_replacement)
+        df = df.dropna(subset=[growth_col, share_col, size_col]) # Drop rows with missing essential data
+        
+        if df.empty:
+            logger.warning("BCG data is empty after cleaning. Cannot create plot.")
+            ax.text(0.5, 0.5, "No valid data for BCG Matrix after cleaning", ha='center', va='center')
+            return fig, ax
+
+        # Determine bubble sizes (scale volume to reasonable plot size)
+        min_vol = df[size_col].min()
+        max_vol = df[size_col].max()
+        if max_vol > min_vol:
+             # Linear scaling
+             sizes = (df[size_col] - min_vol) / (max_vol - min_vol) * (max_bubble_size - 50) + 50 # Scale between 50 and max_bubble_size
+             # Alternative: Area scaling (bubbles proportional to volume area)
+             # sizes = df[size_col] / max_vol * max_bubble_size 
+        else:
+             sizes = [max_bubble_size / 2] * len(df) # Use medium size if all volumes are the same
+        sizes = sizes.fillna(50) # Default size for any NaNs left
+
+        # Determine quadrant dividers
+        if avg_growth is None:
+            avg_growth = df[growth_col].mean()
+            logger.info(f"Using calculated average market growth for BCG divider: {avg_growth:.2f}%")
+        else:
+             logger.info(f"Using provided average market growth for BCG divider: {avg_growth:.2f}%")
+
+        # Create scatter plot (bubble chart)
+        scatter = ax.scatter(df[share_col], df[growth_col], s=sizes,
+                             c=COLOR_PALETTES['main'][1], # Use a consistent color (e.g., blue)
+                             alpha=0.6, edgecolors='w', linewidth=0.5)
+
+        # Add quadrant lines
+        ax.axhline(avg_growth, color='grey', linestyle='--', linewidth=1)
+        ax.axvline(share_threshold, color='grey', linestyle='--', linewidth=1)
+
+        # Add quadrant labels (Stars, Question Marks, Cash Cows, Dogs)
+        plot_xlim = ax.get_xlim()
+        plot_ylim = ax.get_ylim()
+        ax.text(plot_xlim[1] * 0.95, plot_ylim[1] * 0.95, 'Stars', ha='right', va='top', fontsize=12, color='grey', alpha=0.7)
+        ax.text(plot_xlim[0] * 0.95 if plot_xlim[0] != 0 else plot_xlim[1]*0.05, plot_ylim[1] * 0.95, 'Question Marks', ha='left', va='top', fontsize=12, color='grey', alpha=0.7)
+        ax.text(plot_xlim[1] * 0.95, plot_ylim[0] * 0.95 if plot_ylim[0] != 0 else plot_ylim[1]*0.05, 'Cash Cows', ha='right', va='bottom', fontsize=12, color='grey', alpha=0.7)
+        ax.text(plot_xlim[0] * 0.95 if plot_xlim[0] != 0 else plot_xlim[1]*0.05, plot_ylim[0] * 0.95 if plot_ylim[0] != 0 else plot_ylim[1]*0.05, 'Dogs', ha='left', va='bottom', fontsize=12, color='grey', alpha=0.7)
+
+        # Add labels to bubbles
+        for i, row in df.iterrows():
+            # Use a small offset for the label
+            x_pos = row[share_col]
+            y_pos = row[growth_col]
+            label = str(row[label_col]) # Ensure label is string
+            # Simple offset - might need adjustment based on bubble size or density
+            ax.text(x_pos + 0.02, y_pos + 0.02, label, fontsize=7, ha='left', va='bottom', alpha=0.8)
+
+        # Apply common formatting (partially)
+        ax.set_title(title, fontsize=18, fontweight='bold', pad=20, loc='left')
+        ax.set_xlabel("Relative Market Share", fontsize=12)
+        ax.set_ylabel("Market Growth Rate (%)", fontsize=12)
+        
+        # Specific formatting for BCG
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.spines['bottom'].set_color('#cccccc')
+        ax.spines['left'].set_color('#cccccc')
+        ax.grid(True, linestyle='-', alpha=0.3)
+        ax.tick_params(axis='x', length=0)
+        ax.tick_params(axis='y', colors='#555555')
+
+        # Invert X-axis (common in BCG)
+        ax.invert_xaxis()
+        ax.xaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f%%'))
+
+        # Adjust layout
+        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+
+        # Add caption
+        if caption:
+            fig.text(0.05, 0.01, caption, fontsize=9, color='#555555', ha='left')
+            
+        return fig, ax 

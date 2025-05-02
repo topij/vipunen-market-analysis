@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple, List
 import math
 import datetime # Added for date parsing
 import matplotlib.pyplot as plt # Add import
@@ -32,12 +32,263 @@ from ..visualization.education_visualizer import EducationVisualizer, COLOR_PALE
 # )
 logger = logging.getLogger(__name__)
 
+# --- Refactored Helper Functions ---
+
+def prepare_analysis_data(
+    config: Dict[str, Any], 
+    args: Dict[str, Any]
+) -> Tuple[pd.DataFrame, str, List[str], str, str, bool]:
+    """
+    Loads configuration, determines parameters, loads and prepares data.
+
+    Args:
+        config: Loaded configuration dictionary.
+        args: Dictionary of arguments (e.g., from command-line parsing).
+
+    Returns:
+        Tuple containing:
+        - df_clean (pd.DataFrame): Cleaned and prepared data.
+        - institution_key (str): The key for the institution being analyzed.
+        - institution_variants (List[str]): List of names/variants for the institution.
+        - institution_short_name (str): Short name for the institution.
+        - data_update_date_str (str): String representation of the data update date.
+        - filter_qual_types (bool): Whether to filter by qualification types.
+    """
+    logger.info("Preparing analysis data...")
+    
+    # Step 1: Define parameters for the analysis from config and args
+    data_file_path = args.get('data_file', config['paths']['data'])
+    
+    # Determine the institution key
+    default_institution_name = config['institutions']['default']['name']
+    arg_institution_value = args.get('institution') 
+    
+    if arg_institution_value is None or arg_institution_value == default_institution_name:
+        institution_key = 'default'
+        logger.info(f"Using default institution key: '{institution_key}'")
+    else:
+        institution_key = arg_institution_value
+        logger.info(f"Using institution key from args: '{institution_key}'")
+        if institution_key not in config['institutions']:
+            msg = f"Provided institution key '{institution_key}' not found in config['institutions']. Aborting."
+            logger.error(msg)
+            raise KeyError(msg)
+            
+    # Get short_name
+    institution_short_name = args.get('short_name', config['institutions'][institution_key]['short_name'])
+    use_dummy = args.get('use_dummy', False)
+    filter_qual_types = args.get('filter_qual_types', False)
+    # filter_by_inst_quals = args.get('filter_by_inst_quals', False) # This filtering happens below now
+
+    # Get institution variants
+    if 'variants' in args and args['variants']:
+        institution_variants = list(args['variants'])
+        main_name = config['institutions'][institution_key]['name']
+        if main_name not in institution_variants:
+            institution_variants.append(main_name)
+    else:
+        institution_variants = config['institutions'][institution_key].get('variants', [])
+        main_name = config['institutions'][institution_key]['name']
+        if main_name not in institution_variants:
+            institution_variants.append(main_name)
+
+    logger.info(f"Analyzing institution key: {institution_key} (Name: {config['institutions'][institution_key]['name']})")
+    logger.info(f"Institution variants used for matching: {institution_variants}")
+
+    # Step 2: Load the raw data
+    logger.info(f"Loading raw data from {data_file_path}")
+    raw_data = load_data(file_path=data_file_path, use_dummy=use_dummy)
+    logger.info(f"Loaded {len(raw_data)} rows of data")
+
+    # Step 3: Extract Data Update Date
+    data_update_date_str = datetime.datetime.now().strftime("%d.%m.%Y") # Default to today
+    update_date_col = config.get('columns', {}).get('input', {}).get('update_date', 'tietojoukkoPaivitettyPvm')
+    if not raw_data.empty and update_date_col in raw_data.columns:
+        try:
+            raw_date_str = str(raw_data[update_date_col].iloc[0])
+            parsed_date = pd.to_datetime(raw_date_str)
+            data_update_date_str = parsed_date.strftime("%d.%m.%Y")
+            logger.info(f"Using data update date from column '{update_date_col}': {data_update_date_str}")
+        except Exception as date_err:
+            logger.warning(f"Could not parse date from column '{update_date_col}': {date_err}. Falling back to current date.")
+    else:
+        logger.warning(f"Update date column '{update_date_col}' not found or data is empty. Falling back to current date.")
+
+    # Step 4: Clean and prepare the data
+    logger.info("Cleaning and preparing the data")
+    df_clean_initial = clean_and_prepare_data(
+        raw_data, 
+        institution_names=institution_variants,
+        merge_qualifications=True,
+        shorten_names=True
+    )
+    
+    # Step 5: Filter data based on institution's offered qualifications
+    logger.info("Filtering data based on institution and offered qualifications...")
+    input_cols = config['columns']['input']
+    institution_mask = (
+        (df_clean_initial[input_cols['provider']].isin(institution_variants)) |
+        (df_clean_initial[input_cols['subcontractor']].isin(institution_variants))
+    )
+    inst_qualifications = df_clean_initial[institution_mask][input_cols['qualification']].unique()
+    
+    if len(inst_qualifications) > 0:
+        df_clean = df_clean_initial[df_clean_initial[input_cols['qualification']].isin(inst_qualifications)].copy()
+        logger.info(f"Filtered data to {len(inst_qualifications)} qualifications offered by {institution_short_name}. Shape before: {df_clean_initial.shape}, after: {df_clean.shape}")
+    else:
+        logger.warning(f"No qualifications found for institution {institution_short_name} based on variants. Proceeding with potentially unfiltered data.")
+        df_clean = df_clean_initial # Use unfiltered data if no specific qualifications found
+        
+    # Step 6: Conditionally filter by qualification types (applied AFTER institution qual filtering)
+    # This is returned separately as it's a choice made at analysis/orchestration time
+    # if filter_qual_types:
+    #     qual_types = config.get('qualification_types', ['Ammattitutkinnot', 'Erikoisammattitutkinnot'])
+    #     df_clean = df_clean[df_clean['tutkintotyyppi'].isin(qual_types)]
+    #     logger.info(f"Filtered to qualification types: {qual_types}")
+
+    return df_clean, institution_key, institution_variants, institution_short_name, data_update_date_str, filter_qual_types
+
+
+def perform_market_analysis(
+    df_clean: pd.DataFrame, 
+    config: Dict[str, Any], 
+    institution_variants: List[str], 
+    institution_short_name: str,
+    filter_qual_types: bool # Added parameter
+) -> Tuple[Dict[str, pd.DataFrame], MarketAnalyzer]:
+    """
+    Performs the market analysis using MarketAnalyzer.
+
+    Args:
+        df_clean: Cleaned and prepared data DataFrame.
+        config: Configuration dictionary.
+        institution_variants: List of names/variants for the institution.
+        institution_short_name: Short name for the institution.
+        filter_qual_types: Whether to filter by qualification types before analysis.
+
+    Returns:
+        Tuple containing:
+        - analysis_results (Dict[str, pd.DataFrame]): Dictionary of analysis result DataFrames.
+        - analyzer (MarketAnalyzer): The MarketAnalyzer instance used for analysis.
+    """
+    logger.info("Performing market analysis...")
+    
+    # Apply qualification type filtering if requested
+    if filter_qual_types:
+        qual_types = config.get('qualification_types', ['Ammattitutkinnot', 'Erikoisammattitutkinnot'])
+        df_analysis_input = df_clean[df_clean['tutkintotyyppi'].isin(qual_types)].copy()
+        logger.info(f"Applied qualification type filter: {qual_types}. Shape before: {df_clean.shape}, after: {df_analysis_input.shape}")
+    else:
+         df_analysis_input = df_clean # Use the data as is
+         
+    # Initialize and run MarketAnalyzer
+    try:
+        logger.info("Initializing MarketAnalyzer...")
+        analyzer = MarketAnalyzer(df_analysis_input, cfg=config) 
+        analyzer.institution_names = institution_variants
+        analyzer.institution_short_name = institution_short_name
+        
+        logger.info("Running analysis...")
+        analysis_results = analyzer.analyze()
+        
+        return analysis_results, analyzer
+
+    except Exception as e:
+        logger.error(f"Error during analysis execution: {e}", exc_info=True)
+        # Return empty results and a dummy analyzer? Or re-raise? For now, return empty.
+        return {
+            "total_volumes": pd.DataFrame(),
+            "volumes_by_qualification": pd.DataFrame(),
+            "detailed_providers_market": pd.DataFrame(),
+            "qualification_cagr": pd.DataFrame()
+        }, MarketAnalyzer(pd.DataFrame(), cfg=config) # Return a dummy analyzer instance
+
+
+def export_analysis_results(
+    analysis_results: Dict[str, pd.DataFrame], 
+    config: Dict[str, Any], 
+    institution_short_name: str, 
+    base_output_path: str, # Changed from args to direct path
+    include_timestamp: bool = True
+) -> Optional[str]:
+    """
+    Exports analysis results to an Excel file.
+
+    Args:
+        analysis_results: Dictionary of analysis result DataFrames.
+        config: Configuration dictionary.
+        institution_short_name: Short name for the institution.
+        base_output_path: Base directory for output (e.g., 'data/reports').
+        include_timestamp: Whether to include a timestamp in the filename.
+
+    Returns:
+        Optional[str]: Path to the generated Excel file, or None if export fails.
+    """
+    logger.info("Exporting analysis results to Excel...")
+    excel_path = None
+    try:
+        # Determine output directory path
+        dir_name = f"education_market_{institution_short_name.lower()}"
+        full_output_dir_path = Path(base_output_path) / dir_name
+        
+        # Determine path relative to base 'data' directory for FileUtils if possible
+        try:
+            base_data_dir = Path(config['paths']['data']).parts[0] # Assumes paths.data exists
+            excel_output_dir_relative = str(full_output_dir_path.relative_to(base_data_dir))
+        except (KeyError, IndexError, ValueError) as e:
+            logger.warning(f"Could not reliably determine relative path ({e}). Using full path: {full_output_dir_path}")
+            excel_output_dir_relative = str(full_output_dir_path) # Fallback
+            
+        logger.info(f"Calculated relative output dir for export: {excel_output_dir_relative}")
+        
+        # Ensure the main output directory exists (FileUtils handles subdirectory creation)
+        full_output_dir_path.mkdir(parents=True, exist_ok=True)
+        logger.info(f"Ensured base output directory exists: {full_output_dir_path}")
+        
+        # Prepare Excel data
+        excel_data = {}
+        sheet_configs = config.get('excel', {}).get('sheets', [])
+        # Define expected keys based on perform_market_analysis return value
+        analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr'] 
+        
+        if len(sheet_configs) != len(analysis_keys):
+             logger.warning(f"Mismatch between sheet configs ({len(sheet_configs)}) and analysis results ({len(analysis_keys)}). Using default names.")
+             excel_data = { # Fallback using known keys
+                 "Total Volumes": analysis_results.get('total_volumes', pd.DataFrame()).reset_index(drop=True),
+                 "Volumes by Qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()).reset_index(drop=True),
+                 "Provider's Market": analysis_results.get("detailed_providers_market", pd.DataFrame()).reset_index(drop=True),
+                 "CAGR Analysis": analysis_results.get('qualification_cagr', pd.DataFrame()).reset_index(drop=True)
+             }
+        else:
+             for i, sheet_info in enumerate(sheet_configs):
+                 sheet_name = sheet_info.get('name', f'Sheet{i+1}')
+                 analysis_key = analysis_keys[i] 
+                 df = analysis_results.get(analysis_key, pd.DataFrame())
+                 excel_data[sheet_name] = df.reset_index(drop=True) if not df.empty else df
+                 logger.info(f"Mapping analysis key '{analysis_key}' to Excel sheet '{sheet_name}'")
+
+        # Export
+        excel_path = export_to_excel(
+            data_dict=excel_data,
+            file_name=f"{institution_short_name.lower()}_market_analysis",
+            output_dir=excel_output_dir_relative, # Use relative path
+            include_timestamp=include_timestamp
+        )
+        logger.info(f"Excel export successful: {excel_path}")
+
+    except Exception as e:
+        logger.error(f"Error during Excel export: {e}", exc_info=True)
+        excel_path = None # Ensure path is None on error
+
+    return excel_path
+
+
 def generate_visualizations(
     analysis_results: Dict[str, Any],
     visualizer: EducationVisualizer,
     analyzer: MarketAnalyzer,
     config: Dict[str, Any],
-    data_update_date_str: str # Added parameter for data update date
+    data_update_date_str: str
 ):
     """
     Generate all standard visualizations based on analysis results.
@@ -248,605 +499,258 @@ def generate_visualizations(
         #     logger.debug(f"Duplicate rows:\n{inst_share_df[duplicates]}")
         #     inst_share_df = inst_share_df.drop_duplicates(subset=[qual_col, year_col], keep='first')
             
-        heatmap_data = inst_share_df.pivot(index=qual_col, columns=year_col, values=market_share_col)
-        # Filter heatmap data to only active qualifications
-        heatmap_data = heatmap_data[heatmap_data.index.isin(active_qualifications)]
-        
-        if not heatmap_data.empty:
-            # Pass the aggregated, recalculated heatmap data
-            fig, _ = visualizer.create_heatmap(
-                data=heatmap_data,
-                title=f"{inst_short_name}: markkinaosuus tutkinnoittain",
-                caption=base_caption,
-                cmap='Blues' # Example: Use Blues colormap
-            )
-            visualizer.save_visualization(fig, f"{inst_short_name}_share_heatmap") # Save separately
-            plt.close(fig) # Close the figure after saving
+        # Filter heatmap data to active qualifications
+        if not inst_share_df.empty:
+            inst_share_df_active = inst_share_df[inst_share_df[qual_col].isin(active_qualifications)]
+            logger.info(f"Filtered heatmap data to {len(active_qualifications)} active qualifications. Shape before: {inst_share_df.shape}, after: {inst_share_df_active.shape}")
+        else:
+            inst_share_df_active = inst_share_df # Keep empty dataframe if no data
+            
+        if not inst_share_df_active.empty and market_share_col in inst_share_df_active.columns:
+             try:
+                 heatmap_data = inst_share_df_active.pivot_table(
+                     index=qual_col, columns=year_col, values=market_share_col
+                 )
+                 # Sort heatmap rows alphabetically by qualification
+                 heatmap_data = heatmap_data.sort_index()
+             
+                 if not heatmap_data.empty:
+                     fig, _ = visualizer.create_heatmap( # Capture fig
+                         data=heatmap_data,
+                         title=f"{inst_short_name} markkinaosuus (%) aktiivisissa tutkinnoissa",
+                         caption=base_caption,
+                         cmap="Greens",
+                         annot=True,
+                         fmt=".1f"
+                     )
+                     visualizer.save_visualization(fig, f"{inst_short_name}_market_share_heatmap_active") # Save separately
+                     plt.close(fig) # Close the figure after saving
+                 else:
+                      logger.warning(f"Skipping Market Share Heatmap: Pivoted data is empty for active qualifications.")
+             except Exception as pivot_err:
+                  logger.error(f"Error pivoting data for heatmap: {pivot_err}", exc_info=True)
+        else:
+            logger.warning(f"Skipping Market Share Heatmap: No data available for {inst_short_name} in active qualifications or missing column '{market_share_col}'.")
+            
     except Exception as e:
-        logger.error(f"Failed to generate Institution Share heatmap: {e}", exc_info=True)
+        logger.error(f"Failed to generate Institution Market Share Heatmap: {e}", exc_info=True)
 
-    # --- Plot 4: Heatmap with Marginals --- COMMENTED OUT
-    # overall_volume_series = analysis_results.get('overall_total_market_volume')
-    # # Use the aggregated inst_share_df for the heatmap data here as well
-    # if overall_volume_series is not None and not overall_volume_series.empty and 'heatmap_data' in locals() and not heatmap_data.empty:
-    #     try:
-    #         logger.info("Generating Market Share Heatmap with Marginals...")
-    #         # Prepare right data (latest year market total per qual)
-    #         # Note: Market Total comes from detailed_df, not the aggregated one
-    #         latest_detailed = detailed_df[detailed_df[year_col] == plot_reference_year]
-    #         right_data = latest_detailed.drop_duplicates(subset=qual_col).set_index(qual_col)[market_total_col]
-    #         # Filter right_data to only active qualifications
-    #         right_data = right_data[right_data.index.isin(active_qualifications)]
-    # 
-    #         # --- Apply RI-specific adjustment for 'Liiketoiminnan PT' --- 
-    #         if analyzer.institution_short_name == "RI" and 'Liiketoiminnan PT' in right_data.index:
-    #             logger.info("Applying RI-specific adjustment: Halving 'Liiketoiminnan PT' market size for marginals plot.")
-    #             right_data.loc['Liiketoiminnan PT'] = right_data.loc['Liiketoiminnan PT'] / 2
-    #         # --- End RI Adjustment --- 
-    # 
-    #         # Use the heatmap_data created *after* aggregation
-    #         fig = visualizer.create_heatmap_with_marginals(
-    #             heatmap_data=heatmap_data, 
-    #             top_data=overall_volume_series,
-    #             right_data=right_data,
-    #             title=f"{inst_short_name}: markkinaosuus vs markkinakoko ({plot_reference_year})",
-    #             top_title=f"Koko markkina (kaikki tutkinnot, {min_year}-{max_year})",
-    #             right_title=f"Tutkinnon markkinakoko ({plot_reference_year})",
-    #             # caption=base_caption,
-    #             caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else ""),
-    # 
-    #             cmap='Blues'
-    #         )
-    #         visualizer.save_visualization(fig, f"{inst_short_name}_share_heatmap_marginals") # Save separately
-    #         plt.close(fig) # Close the figure after saving
-    #     except Exception as e:
-    #         logger.error(f"Failed to generate Heatmap with Marginals: {e}", exc_info=True)
-    # else:
-    #     logger.warning("Skipping Heatmap with Marginals: Data not available.")
-        
-    # --- Plot 5: Horizontal Bar (Qualification Growth) ---
-    qual_growth_df = analysis_results.get('qualification_market_yoy_growth')
-    # Define the derived growth column name
-    market_total_growth_col = f"{market_total_col} YoY Growth (%)"
-    if qual_growth_df is not None and not qual_growth_df.empty:
+    # --- Plot 4: BCG Matrix (Market Share vs. Growth) ---
+    logger.info("Generating BCG Growth-Share Matrix...")
+    bcg_data_df = analysis_results.get('bcg_data') # Get the calculated BCG data
+    
+    if bcg_data_df is not None and not bcg_data_df.empty:
         try:
-            logger.info("Generating Qualification Market Growth Bar Chart...")
-            # Use growth data for the transition into the plot_reference_year
-            growth_ref_year = qual_growth_df[qual_growth_df[year_col] == plot_reference_year].dropna(subset=[market_total_growth_col])
-            # Filter to qualifications relevant to the institution (active ones)
-            growth_ref_year = growth_ref_year[growth_ref_year[qual_col].isin(active_qualifications)]
-                
-            if not growth_ref_year.empty:
-                sorted_growth = growth_ref_year.sort_values(market_total_growth_col)
-                # Capture fig, ax return values
-                fig, ax = visualizer.create_horizontal_bar_chart(
-                    data=sorted_growth,
-                    x_col=market_total_growth_col,
-                    y_col=qual_col,
-                    volume_col=market_total_col,
-                    title=f"Tutkinnot: nousijat ja laskijat (YoY: {plot_reference_year-1}-{plot_reference_year})",
-                    caption=base_caption,
-                    sort_by=market_total_growth_col,
-                    x_label_text="Tutkinnon markkinakasvu (%)",
-                    y_label_detail_format="({:.0f})" # Format volume as integer
+            # Define column names expected by create_bcg_matrix based on _calculate_bcg_data output
+            bcg_growth_col = 'Market Growth (%)'
+            bcg_share_col = 'Relative Market Share'
+            bcg_size_col = 'Institution Volume'
+            # Use the standard qualification column name from config
+            bcg_qual_col = qual_col 
+            
+            # Check if required columns exist (already checked in analyzer, but double-check is safe)
+            required_bcg_cols = [bcg_qual_col, bcg_growth_col, bcg_share_col, bcg_size_col]
+            if all(c in bcg_data_df.columns for c in required_bcg_cols):
+                plot_title = f"{inst_short_name}: Tutkintojen kasvu vs. markkinaosuus ({max_year})"
+                # Construct caption
+                bcg_caption = base_caption + f" Kuplan koko = {inst_short_name} volyymi. Suhteellinen markkinaosuus = {inst_short_name} osuus / Suurimman kilpailijan osuus."
+
+                fig, _ = visualizer.create_bcg_matrix(
+                    data=bcg_data_df,
+                    growth_col=bcg_growth_col,
+                    share_col=bcg_share_col,
+                    size_col=bcg_size_col,
+                    label_col=bcg_qual_col,
+                    title=plot_title,
+                    caption=bcg_caption,
+                    # avg_growth=None, # Use default (mean) or provide a specific value
+                    # share_threshold=1.0 # Use default
                 )
-                visualizer.save_visualization(fig, f"{inst_short_name}_qualification_growth_bar") # Save separately
-                plt.close(fig) # Close the figure after saving
+                visualizer.save_visualization(fig, f"{inst_short_name}_bcg_matrix")
+                plt.close(fig)
+            else:
+                logger.warning(f"Skipping BCG Matrix plot: Missing one or more required columns in bcg_data: {required_bcg_cols}. Found: {bcg_data_df.columns.tolist()}")
         except Exception as e:
-            logger.error(f"Failed to generate Qualification Growth plot: {e}", exc_info=True)
+            logger.error(f"Failed to generate BCG Matrix plot: {e}", exc_info=True)
+            if 'fig' in locals() and plt.fignum_exists(fig.number):
+                plt.close(fig)
     else:
-        logger.warning("Skipping Qualification Growth plot: Data not available.")
+        logger.warning("Skipping BCG Matrix plot: bcg_data not available or empty in analysis results.")
 
-    # --- Plot 6: Horizontal Bar (Provider Gainers/Losers) - Loop per Qualification ---
-    logger.info(f"Generating Provider Gainer/Loser Bar Charts for {len(active_qualifications)} active qualifications...")
-    # --- Iterate over ALL active qualifications --- 
-    for qual in active_qualifications: 
-        try:
-            latest_qual_df = detailed_df[
-                (detailed_df[qual_col] == qual) & (detailed_df[year_col] == plot_reference_year)
-            ].dropna(subset=[market_share_growth_col])
-
-            if not latest_qual_df.empty:
-                # --- Filtering based on config ---
-                gainer_loser_config = config.get('analysis', {}).get('gainers_losers', {})
-                min_share_threshold = gainer_loser_config.get('min_market_share_threshold')
-                min_rank_percentile = gainer_loser_config.get('min_market_rank_percentile')
-                
-                filter_notes = [] # Initialize list to store filter descriptions
-
-                original_provider_count = len(latest_qual_df)
-                filtered_df = latest_qual_df.copy() # Start with a copy
-
-                # Apply Market Share Threshold
-                if min_share_threshold is not None and market_share_col in filtered_df.columns:
-                    try:
-                        min_share = float(min_share_threshold)
-                        if 0 <= min_share <= 100:
-                            original_len = len(filtered_df)
-                            filtered_df = filtered_df[filtered_df[market_share_col] >= min_share]
-                            if len(filtered_df) < original_len: # Check if filter actually removed rows
-                                filter_notes.append(f"Markkinaosuus < {min_share}%")
-                            logger.debug(f"[{qual}] Applying min market share threshold: >= {min_share}%. Kept {len(filtered_df)}/{original_provider_count} providers.")
-                        else:
-                            logger.warning(f"Invalid min_market_share_threshold ({min_share_threshold}), must be between 0 and 100. Skipping.")
-                    except ValueError:
-                        logger.warning(f"Invalid min_market_share_threshold ({min_share_threshold}), must be a number. Skipping.")
-
-                # Apply Market Rank Percentile Threshold
-                if min_rank_percentile is not None and market_rank_col in filtered_df.columns:
-                    try:
-                        percentile = float(min_rank_percentile)
-                        if 0 <= percentile <= 100:
-                            if not filtered_df.empty:
-                                original_len = len(filtered_df)
-                                # Calculate the rank cutoff. Lower rank numbers are better (e.g., rank 1 is best).
-                                # We want to keep the top 'percentile' percent.
-                                # Example: 90th percentile -> keep top 10% -> keep ranks <= ceil(total_providers * 0.10)
-                                cutoff_fraction = (100.0 - percentile) / 100.0
-                                num_providers_to_keep = math.ceil(len(filtered_df) * cutoff_fraction)
-                                # Ensure we keep at least one if possible
-                                num_providers_to_keep = max(1, num_providers_to_keep) 
-                                
-                                # Find the rank corresponding to the cutoff
-                                # Sort by rank to find the rank value at the Nth position
-                                sorted_by_rank = filtered_df.sort_values(market_rank_col)
-                                if num_providers_to_keep <= len(sorted_by_rank):
-                                    rank_threshold = sorted_by_rank.iloc[num_providers_to_keep - 1][market_rank_col]
-                                    # Keep all providers with rank <= rank_threshold (handles ties)
-                                    filtered_df = filtered_df[filtered_df[market_rank_col] <= rank_threshold]
-                                    if len(filtered_df) < original_len: # Check if filter actually removed rows
-                                        filter_notes.append(f"Sijoitus top {100-percentile:.0f}% ulkopuolella")
-                                    logger.debug(f"[{qual}] Applying min market rank percentile: {percentile}th (keep top {100-percentile:.1f}% => rank <= {rank_threshold}). Kept {len(filtered_df)} providers.")
-                                else:
-                                    # Keep everyone if cutoff exceeds number of providers
-                                    logger.debug(f"[{qual}] Rank percentile filter ({percentile}th) keeps all {len(filtered_df)} remaining providers.")
-                            else:
-                                logger.debug(f"[{qual}] Skipping rank percentile filter: no providers left after previous filters.")
-                        else:
-                            logger.warning(f"Invalid min_market_rank_percentile ({min_rank_percentile}), must be between 0 and 100. Skipping.")
-                    except ValueError:
-                        logger.warning(f"Invalid min_market_rank_percentile ({min_rank_percentile}), must be a number. Skipping.")
-                
-                # Use the filtered data frame for selecting gainers/losers
-                if not filtered_df.empty:
-                    gainers = filtered_df.nlargest(3, market_share_growth_col)
-                    losers = filtered_df.nsmallest(3, market_share_growth_col)
-                    # Ensure no overlap if fewer than 6 providers
-                    plot_data = pd.concat([losers, gainers]).drop_duplicates().sort_values(market_share_growth_col)
-                else:
-                    logger.info(f"[{qual}] No providers left after filtering for gainer/loser plot.")
-                    plot_data = pd.DataFrame() # Ensure plot_data is an empty DataFrame
-
-                if not plot_data.empty:
-                    # Construct caption with potential filtering notes
-                    plot_caption = base_caption + f" Suluissa on toimijan markkinaosuus tutkinnossa vuonna {plot_reference_year}."
-                    if filter_notes:
-                        plot_caption += f" Suodatettu: {'; '.join(filter_notes)}."
-                        
-                    qual_filename_part = qual.replace(' ', '_').replace('/', '_').lower()[:30]
-                    fig, _ = visualizer.create_horizontal_bar_chart( # Capture fig
-                        data=plot_data,
-                        x_col=market_share_growth_col,
-                        y_col=provider_col,
-                        volume_col=market_share_col, # Show current market share in label
-                        title=f"{qual}: suurimmat nousijat ja laskijat ({plot_reference_year})",
-                        caption=plot_caption, # Use the potentially extended caption
-                        x_label_text="Markkinaosuuden vuosikasvu (%)",
-                        y_label_detail_format="({:.1f} %)"
-                    )
-                    visualizer.save_visualization(fig, f"{inst_short_name}_{qual_filename_part}_gainer_loser_bar") # Save separately
-                    plt.close(fig) # Close the figure after saving
-        except Exception as e:
-            logger.error(f"Failed to generate Gainer/Loser plot for {qual}: {e}", exc_info=True)
-
-    # --- Plot 7: Treemap ---
-    inst_latest_df = detailed_df[(detailed_df[provider_col].isin(inst_names)) & (detailed_df[year_col] == plot_reference_year)]
-    if inst_latest_df is not None and not inst_latest_df.empty:
-        try:
-            logger.info("Generating Market Share Treemap...")
-            # Use data from plot_reference_year for the treemap
-            treemap_base_data = detailed_df[
-                (detailed_df[provider_col].isin(inst_names)) &
-                (detailed_df[year_col] == plot_reference_year)
-            ].copy()
-
-            # Filter for active qualifications
-            treemap_base_data = treemap_base_data[treemap_base_data[qual_col].isin(active_qualifications)]
-            
-            # Ensure Market Total is present for sizing
-            if market_total_col not in treemap_base_data.columns:
-                 # Merge market total if missing (might happen if filtered differently)
-                 ref_year_totals = detailed_df[detailed_df[year_col] == plot_reference_year][[qual_col, market_total_col]].drop_duplicates()
-                 treemap_base_data = pd.merge(treemap_base_data, ref_year_totals, on=qual_col, how='left')
-            
-            # Apply RI-specific adjustment for 'Liiketoiminnan PT'
-            if analyzer.institution_short_name == "RI":
-                pt_index = treemap_base_data[treemap_base_data[qual_col] == 'Liiketoiminnan PT'].index
-                if not pt_index.empty:
-                    logger.info("Applying RI-specific adjustment: Halving Market Total for Liiketoiminnan PT in Treemap.")
-                    treemap_base_data.loc[pt_index, market_total_col] = treemap_base_data.loc[pt_index, market_total_col] / 2
-                 
-            # Ensure Market Total is not zero or NaN before proceeding
-            treemap_data = treemap_base_data[treemap_base_data[market_total_col].fillna(0) > 0].copy()
-            
-            if not treemap_data.empty:
-                # Sort by Market Total descending for stable treemap layout
-                treemap_data = treemap_data.sort_values(market_total_col, ascending=False)
-                
-                # Call the original Matplotlib treemap function
-                fig, _ = visualizer.create_treemap(
-                    data=treemap_data,
-                    value_col=market_total_col, # Size by Market Total
-                    label_col=qual_col, 
-                    detail_col=market_share_col, # Show institution's share inside
-                    title=f"{inst_short_name}: Tutkintojen markkinaosuudet ({plot_reference_year})",
-                    caption=base_caption + (". Huom. Liiketoiminnan PT koko puolitettu (RI:n markkina)" if analyzer.institution_short_name == "RI" else "")
-                )
-                visualizer.save_visualization(fig, f"{inst_short_name}_qualification_treemap") # Save separately
-                plt.close(fig) # Close the figure after saving
-
-        except Exception as e:
-            logger.error(f"Failed to generate Treemap plot: {e}", exc_info=True)
-    else:
-        logger.warning("Skipping Treemap plot: Data not available for the reference year.")
-
-    # --- Plot 8: Combined Volume / Provider Count Plot ---
+    # --- Plot 5: Combined Volume / Provider Count Plot ---
     logger.info("Generating Volume / Provider Count Plot...")
-    volume_df = analysis_results.get('total_volumes') # Use the overall institution volume
-    count_df = analysis_results.get('provider_counts_by_year') # Use the newly calculated counts
-
-    # --- DEBUGGING: Log DataFrame status before check ---
-    vol_shape = volume_df.shape if volume_df is not None else None
-    count_shape = count_df.shape if count_df is not None else None
-    # Use INFO level for these logs
-    logger.info(f"Plot 8 Check: volume_df shape: {vol_shape}")
-    logger.info(f"Plot 8 Check: volume_df columns: {volume_df.columns.tolist() if volume_df is not None else None}")
-    logger.info(f"Plot 8 Check: count_df shape: {count_shape}")
-    logger.info(f"Plot 8 Check: count_df columns: {count_df.columns.tolist() if count_df is not None else None}")
-    # --- END DEBUGGING ---
+    volume_df = analysis_results.get('total_volumes') # Overall institution volume
+    count_df = analysis_results.get('provider_counts_by_year') # Provider counts for institution's qualifications
 
     if volume_df is not None and not volume_df.empty and count_df is not None and not count_df.empty:
-        # --- DEBUGGING: Log entry into plotting block ---
         logger.debug("Entering Volume/Provider Count plotting block.")
         try:
-            # Get column names from config
+            # Get necessary column names from config (use output section)
             year_col_name = config['columns']['output']['year']
-            provider_amount_col_name = config['columns']['output']['provider_amount']
-            subcontractor_amount_col_name = config['columns']['output']['subcontractor_amount']
-            # Use the same default keys used in MarketAnalyzer if not in config
-            provider_count_col_name = config['columns']['output'].get('unique_providers_count', 'Unique_Providers_Count')
-            subcontractor_count_col_name = config['columns']['output'].get('unique_subcontractors_count', 'Unique_Subcontractors_Count')
+            vol_provider_col_name = config['columns']['output']['provider_amount']
+            vol_subcontractor_col_name = config['columns']['output']['subcontractor_amount']
+            # Use the same keys used in MarketAnalyzer when creating provider_counts_by_year
+            count_provider_col_name = 'Unique_Providers_Count' # As defined in MarketAnalyzer
+            count_subcontractor_col_name = 'Unique_Subcontractors_Count' # As defined in MarketAnalyzer
             
-            # Merge dataframes on Year to ensure alignment, using an outer join to keep all years
-            # Assuming both use the standard output year column name ('Year')
-            # merged_data = pd.merge(volume_df, count_df, on=year_col_name, how='outer') # Merge not needed, pass separately
-            # Sort by year just in case
-            # merged_data = merged_data.sort_values(year_col_name)
-
-            # Prepare data for plotting (fill potential NaNs after merge, e.g., with 0?)
-            # Let the plotting function handle missing data internally for now.
-
             plot_title = f"{inst_short_name}: Opiskelijamäärät ja kouluttajamarkkina ({min_year}-{max_year})"
             volume_subplot_title = "Netto-opiskelijamäärä"
             count_subplot_title = "Uniikit kouluttajat markkinassa"
-            # Use the standard base caption
             plot_caption = base_caption + f". Kouluttajamäärä perustuu tutkintoihin, joita {inst_short_name} tarjoaa."
 
             fig, _ = visualizer.create_volume_and_provider_count_plot(
-                volume_data=volume_df, # Pass original volume df
-                count_data=count_df,   # Pass original count df
+                volume_data=volume_df,
+                count_data=count_df,
                 title=plot_title,
                 volume_title=volume_subplot_title,
                 count_title=count_subplot_title,
-                # Pass column names from config
                 year_col=year_col_name,
-                vol_provider_col=provider_amount_col_name,
-                vol_subcontractor_col=subcontractor_amount_col_name,
-                count_provider_col=provider_count_col_name,
-                count_subcontractor_col=subcontractor_count_col_name,
+                vol_provider_col=vol_provider_col_name,
+                vol_subcontractor_col=vol_subcontractor_col_name,
+                count_provider_col=count_provider_col_name,
+                count_subcontractor_col=count_subcontractor_col_name,
                 caption=plot_caption
             )
             visualizer.save_visualization(fig, f"{inst_short_name}_volume_provider_counts")
             plt.close(fig)
-
+        except KeyError as ke:
+             logger.error(f"Failed to generate Volume/Provider Count plot due to missing column key: {ke}", exc_info=True)
         except Exception as e:
             logger.error(f"Failed to generate Volume/Provider Count plot: {e}", exc_info=True)
-            # Optionally close the fig if it exists and error occurred before saving
             if 'fig' in locals() and plt.fignum_exists(fig.number):
                 plt.close(fig)
     else:
         logger.warning("Skipping Volume/Provider Count plot: Required volume or count data is missing.")
 
-    logger.info("Visualization generation completed.")
+    logger.info("Visualization generation finished.")
 
-    # --- Close the PDF file if it was opened ---
-    visualizer.close_pdf()
+# --- Refactored Orchestrator Function ---
 
-def run_analysis(args: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def run_analysis_workflow(args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Run the education market analysis workflow.
-    
+    Orchestrates the full analysis workflow: data prep, analysis, export, viz.
+
     Args:
-        args: Dictionary of arguments, defaults to command-line arguments if None
-        
+        args: Dictionary of arguments from command-line parsing.
+
     Returns:
-        Dict[str, Any]: Dictionary with analysis results
+        Dictionary containing analysis results DataFrames and Excel path.
+            Keys: 'analysis_results', 'excel_path'
     """
-    # Temporarily set this module's logger to DEBUG to see duplicate rows
-    # original_level = logger.getEffectiveLevel()
-    # logger.setLevel(logging.DEBUG) # REMOVE
+    logger.info("Starting analysis workflow...")
     
-    # Parse arguments if not provided
-    if args is None:
-        # Pass empty list to prevent parsing pytest args from sys.argv
-        parsed_args = parse_arguments([]) 
-        args = vars(parsed_args)
-    
-    # Step 1: Load configuration
+    # Step 1: Load configuration (can be done once here)
     logger.info("Loading configuration...")
     config = get_config()
     
-    # --- Logging Level Override (Example - Remove if not needed) ---
-    # ... (logging override code) ...
-    # --- End Logging Level Override ---
+    # --- Optional Logging Level Override ---
+    # ... (logging override code if needed) ...
+    # ---
 
-    # Step 2: Define parameters for the analysis
-    data_file_path = args.get('data_file', config['paths']['data'])
-    
-    # Determine the institution key to use
-    # Default name from config to compare against
-    default_institution_name = config['institutions']['default']['name']
-    # Get the value provided by argument or default
-    arg_institution_value = args.get('institution') 
-    
-    if arg_institution_value is None or arg_institution_value == default_institution_name:
-        # If no argument provided OR if the provided value is the default name, use the 'default' key
-        institution_key = 'default'
-        logger.info(f"No institution argument provided or matches default name. Using default key: '{institution_key}'")
-    else:
-        # Otherwise, assume the provided argument is the intended key
-        institution_key = arg_institution_value
-        logger.info(f"Using institution key provided via argument: '{institution_key}'")
-        # Optional: Validate if the key exists in config
-        if institution_key not in config['institutions']:
-            logger.error(f"Provided institution key '{institution_key}' not found in config['institutions']. Aborting.")
-            raise KeyError(f"Institution key '{institution_key}' not found in configuration.")
-            
-    # print(f"DEBUG: Initial institution_key from args/default: {institution_key}") # DEBUG REMOVED
-    
-    # Get short_name based on the determined key
-    institution_short_name = args.get('short_name', config['institutions'][institution_key]['short_name'])
-    use_dummy = args.get('use_dummy', False)
-    filter_qual_types = args.get('filter_qual_types', False)
-    filter_by_inst_quals = args.get('filter_by_inst_quals', False)
-    
-    # Get institution variants based on the key
-    if 'variants' in args and args['variants']:
-        institution_variants = list(args['variants'])
-        # Add the main name corresponding to the key if not already present
-        main_name = config['institutions'][institution_key]['name']
-        if main_name not in institution_variants:
-            institution_variants.append(main_name)
-    else:
-        # Default variants from config using the key
-        institution_variants = config['institutions'][institution_key].get('variants', [])
-        # Add the main name corresponding to the key if not already present
-        main_name = config['institutions'][institution_key]['name']
-        if main_name not in institution_variants:
-            institution_variants.append(main_name)
-
-    logger.info(f"Analyzing institution key: {institution_key} (Name: {config['institutions'][institution_key]['name']})")
-    logger.info(f"Institution variants used for matching: {institution_variants}")
-    
-    # Step 3: Load the raw data
-    logger.info(f"Loading raw data from {data_file_path}")
-    raw_data = load_data(file_path=data_file_path, use_dummy=use_dummy)
-    logger.info(f"Loaded {len(raw_data)} rows of data")
-    
-    # --- Extract Data Update Date ---
-    data_update_date_str = datetime.datetime.now().strftime("%d.%m.%Y") # Default to today
-    update_date_col = config.get('columns', {}).get('input', {}).get('update_date', 'tietojoukkoPaivitettyPvm')
-    if not raw_data.empty and update_date_col in raw_data.columns:
-        try:
-            # Get the date string from the first row
-            raw_date_str = str(raw_data[update_date_col].iloc[0])
-            # Attempt to parse the date (assuming common formats like YYYY-MM-DD HH:MM:SS or YYYY-MM-DD)
-            # pd.to_datetime is flexible
-            parsed_date = pd.to_datetime(raw_date_str)
-            data_update_date_str = parsed_date.strftime("%d.%m.%Y")
-            logger.info(f"Using data update date from column '{update_date_col}': {data_update_date_str}")
-        except Exception as date_err:
-            logger.warning(f"Could not parse date from column '{update_date_col}': {date_err}. Falling back to current date.")
-    else:
-        logger.warning(f"Update date column '{update_date_col}' not found or data is empty. Falling back to current date.")
-    # --- End Extract Data Update Date ---
-    
-    # Step 4: Clean and prepare the data
-    logger.info("Cleaning and preparing the data")
-    df_clean = clean_and_prepare_data(
-        raw_data, 
-        institution_names=institution_variants,
-        merge_qualifications=True,
-        shorten_names=True
-    )
-    
-    # Filter data for the specific institution and qualifications
-    logger.info("Filtering data based on institution and offered qualifications...")
-    # Filter for institution data to identify relevant qualifications
-    logger.info(f"Filtering data for institution: {config['institutions'][institution_key]['name']} and variants...")
-    institution_mask = (
-        (df_clean[config['columns']['input']['provider']].isin(institution_variants)) |
-        (df_clean[config['columns']['input']['subcontractor']].isin(institution_variants))
-    )
-    
-    # Get qualifications offered by the institution
-    inst_qualifications = df_clean[institution_mask][config['columns']['input']['qualification']].unique()
-    
-    # Filter the main DataFrame to only include these qualifications
-    if len(inst_qualifications) > 0:
-        df_clean_filtered_by_qual = df_clean[df_clean[config['columns']['input']['qualification']].isin(inst_qualifications)].copy()
-        logger.info(f"Filtered data to {len(inst_qualifications)} qualifications offered by {config['institutions'][institution_key]['name']}. Shape before: {df_clean.shape}, after: {df_clean_filtered_by_qual.shape}")
-        df_clean = df_clean_filtered_by_qual # Update df_clean with the filtered data
-    else:
-        logger.warning(f"No qualifications found for institution {config['institutions'][institution_key]['name']} based on variants. Proceeding with data potentially unfiltered by qualification.")
-        # df_clean remains unfiltered by institution qualifications in this case
-
-    # Conditionally filter by qualification types (applied AFTER institution qual filtering)
-    if filter_qual_types:
-        qual_types = config.get('qualification_types', ['Ammattitutkinnot', 'Erikoisammattitutkinnot'])
-        df_clean = df_clean[df_clean['tutkintotyyppi'].isin(qual_types)]
-        logger.info(f"Filtered to qualification types: {qual_types}")
-    
-    # --- Start Analysis Block with Error Handling ---
-    analysis_results = {}
-    excel_path = None
+    # Step 2: Prepare Data
     try:
-        # Step 5: Perform analysis using the MarketAnalyzer
-        logger.info("Initializing market analyzer")
-        # Create MarketAnalyzer instance
-        logger.info("Initializing MarketAnalyzer...")
-        # Pass the loaded config to the analyzer
-        analyzer = MarketAnalyzer(df_clean, cfg=config)
-        # Use institution_key (defaults to 'default') to access config
-        # Set the list of names including variants and the main name for the analyzer
-        analyzer.institution_names = institution_variants # Use the derived list
-        analyzer.institution_short_name = institution_short_name # Use the derived short name
-        
-        # Run the analysis
-        logger.info("Running analysis")
-        analysis_results = analyzer.analyze() # This calls get_all_results
-        
-        # Step 6: Create directory structure for outputs (only if analysis succeeds)
-        logger.info("Creating output directories")
-        
-        # Determine output directory path (e.g., project_root/data/reports/education_market_ri)
-        base_output_path = config['paths'].get('output', 'data/reports')
-        if args.get('output_dir'): # Allow command-line override
-             base_output_path = args['output_dir']
-             
-        dir_name = f"education_market_{institution_short_name.lower()}"
-        # full_output_dir_path includes the base 'data' dir if present in config
-        full_output_dir_path = Path(base_output_path) / dir_name
-        
-        # --- Determine path relative to base 'data' directory for FileUtils --- 
-        # FileUtils expects paths relative to its configured type directories (e.g., 'reports')
-        try:
-            # Find the base data dir component (e.g., 'data')
-            base_data_dir = Path(config['paths']['data']).parts[0] # Assumes paths.data exists and gives base
-            excel_output_dir_relative = str(full_output_dir_path.relative_to(base_data_dir))
-        except (KeyError, IndexError, ValueError) as e:
-            logger.warning(f"Could not reliably determine path relative to base data directory ({e}). Using full path: {full_output_dir_path}")
-            # Fallback: Pass the full path; export_to_excel should handle it if configured correctly
-            excel_output_dir_relative = str(full_output_dir_path)
-            
-        logger.info(f"Calculated relative output dir for export: {excel_output_dir_relative}")
-        
-        # Ensure the main output directory exists, but don't create 'plots' subdir
-        # FileUtils will handle creation for the Excel file path
-        # plots_dir = full_output_dir_path / "plots"
-        # plots_dir.mkdir(parents=True, exist_ok=True)
-        # logger.info(f"Ensured plots directory exists: {plots_dir}")
-        full_output_dir_path.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Ensured base output directory exists: {full_output_dir_path}")
-        
-        # Step 7: Export results to Excel (only if analysis succeeds)
-        logger.info("Exporting results to Excel")
-        
-        # Prepare Excel data using results from analyze() and sheet names from config
-        excel_data = {}
-        sheet_configs = config.get('excel', {}).get('sheets', [])
-        analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr']
-        
-        if len(sheet_configs) != len(analysis_keys):
-             logger.warning(f"Mismatch between number of sheet configs ({len(sheet_configs)}) and expected analysis results ({len(analysis_keys)}). Falling back to default sheet names.")
-             # Fallback to old hardcoded names if config doesn't match structure
-             excel_data = {
-                 "Total Volumes": analysis_results.get('total_volumes', pd.DataFrame()).reset_index(drop=True),
-                 "Volumes by Qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()).reset_index(drop=True),
-                 "Provider's Market": analysis_results.get("detailed_providers_market", pd.DataFrame()).reset_index(drop=True),
-                 "CAGR Analysis": analysis_results.get('qualification_cagr', pd.DataFrame()).reset_index(drop=True)
-             }
-        else:
-             for i, sheet_info in enumerate(sheet_configs):
-                 sheet_name = sheet_info.get('name', f'Sheet{i+1}') # Get name from config, fallback to SheetN
-                 analysis_key = analysis_keys[i]
-                 # Get the corresponding DataFrame, provide an empty one as default
-                 df = analysis_results.get(analysis_key, pd.DataFrame())
-                 # Reset index if DataFrame is not empty
-                 if not df.empty:
-                     excel_data[sheet_name] = df.reset_index(drop=True)
-                 else:
-                     excel_data[sheet_name] = df # Keep empty DataFrame as is
-                 logger.info(f"Mapping analysis key '{analysis_key}' to Excel sheet '{sheet_name}'")
+        df_clean, institution_key, institution_variants, institution_short_name, data_update_date_str, filter_qual_types = prepare_analysis_data(config, args)
+    except Exception as prep_err:
+        logger.error(f"Data preparation failed: {prep_err}", exc_info=True)
+        # Return minimal results indicating failure
+        return {"analysis_results": {}, "excel_path": None} 
 
-        # Export to Excel using the relative path
-        excel_path = export_to_excel(
-            data_dict=excel_data,
-            file_name=f"{institution_short_name.lower()}_market_analysis",
-            output_dir=excel_output_dir_relative, # Pass relative path
-            include_timestamp=True
+    # Step 3: Perform Analysis
+    analysis_results, analyzer = perform_market_analysis(
+        df_clean, config, institution_variants, institution_short_name, filter_qual_types
+    )
+    
+    # Check if analysis produced meaningful results before proceeding
+    # A simple check could be if the main DataFrame is not empty
+    if analysis_results.get("detailed_providers_market", pd.DataFrame()).empty:
+         logger.warning("Analysis resulted in empty 'detailed_providers_market' data. Skipping export and visualization.")
+         return {"analysis_results": analysis_results, "excel_path": None}
+         
+    # Step 4: Export Results to Excel
+    # Explicitly handle None from args.get('output_dir')
+    output_dir_arg = args.get('output_dir')
+    if output_dir_arg is not None:
+        base_output_path = output_dir_arg
+        logger.debug(f"Using output directory from command line args: {base_output_path}")
+    else:
+        # Fallback to config or hardcoded default
+        base_output_path = config.get('paths', {}).get('output', 'data/reports')
+        logger.debug(f"Using output directory from config/default: {base_output_path}")
+
+    # Remove the previous debug log
+    # logger.debug(f"[Workflow] base_output_path before export: '{base_output_path}' (Type: {type(base_output_path)})")
+    excel_path = export_analysis_results(
+        analysis_results, config, institution_short_name, base_output_path
+    )
+
+    # Step 5: Generate Visualizations
+    try:
+        logger.info("Initializing visualizer...")
+        # Determine the full output path for visualizations (needed for Visualizer init)
+        # Use the same base_output_path determined above
+        dir_name = f"education_market_{institution_short_name.lower()}"
+        # Remove the previous debug log
+        # logger.debug(f"[Workflow] base_output_path before viz path creation: '{base_output_path}' (Type: {type(base_output_path)})")
+        full_output_dir_path = Path(base_output_path) / dir_name
+        full_output_dir_path.mkdir(parents=True, exist_ok=True) # Ensure dir exists
+        
+        visualizer = EducationVisualizer(
+            output_dir=full_output_dir_path, 
+            output_format=args.get('plot_format', 'pdf'), # Use arg or default
+            institution_short_name=institution_short_name,
+            include_timestamp=True # Match Excel timestamping logic
         )
         
-        logger.info(f"Analysis complete!")
-        
-        # Step 8: Generate Visualizations
-        try:
-            logger.info("Initializing visualizer...")
-            # Pass the main output directory and institution short name
-            visualizer = EducationVisualizer(
-                output_dir=full_output_dir_path, 
-                output_format='pdf',
-                institution_short_name=institution_short_name,
-                include_timestamp=True # Match Excel timestamping
-            )
-            # Pass the extracted data update date
-            generate_visualizations(
-                analysis_results=analysis_results, 
-                visualizer=visualizer, 
-                analyzer=analyzer, 
-                config=config, 
-                data_update_date_str=data_update_date_str 
-            )
-        except Exception as vis_error:
-            logger.error(f"Error during visualization generation: {vis_error}", exc_info=True)
-            # Continue without visualizations if they fail
+        generate_visualizations(
+            analysis_results=analysis_results, 
+            visualizer=visualizer, 
+            analyzer=analyzer, # Pass the analyzer instance
+            config=config, 
+            data_update_date_str=data_update_date_str 
+        )
+    except Exception as vis_error:
+        logger.error(f"Error during visualization generation: {vis_error}", exc_info=True)
+        # Continue workflow even if visualizations fail
+    finally:
+        # Ensure PDF is closed if visualizer was created
+        if 'visualizer' in locals() and visualizer is not None:
+            visualizer.close_pdf()
 
-    except Exception as e:
-        logger.error(f"Error during analysis execution: {e}", exc_info=True)
-        # Ensure default empty results are available in case of error
-        analysis_results = {
-            "total_volumes": pd.DataFrame(),
-            "volumes_by_qualification": pd.DataFrame(),
-            "detailed_providers_market": pd.DataFrame(),
-            "qualification_cagr": pd.DataFrame()
-        }
-        excel_path = None # No Excel file generated
-        # Note: We allow the function to return normally, but with empty results
-
-    # --- End Analysis Block ---
+    logger.info("Analysis workflow completed.")
     
-    # Restore original logging level before returning
-    # logger.setLevel(original_level) # REMOVE
-
-    # Return results (potentially empty if error occurred, now includes full analysis dict)
+    # Return final results
     return {
-        "total_volumes": analysis_results.get('total_volumes', pd.DataFrame()),
-        "volumes_by_qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()),
-        "detailed_providers_market": analysis_results.get("detailed_providers_market", pd.DataFrame()),
-        "qualification_cagr": analysis_results.get('qualification_cagr', pd.DataFrame()),
+        "analysis_results": analysis_results, 
         "excel_path": excel_path
     }
+
+# --- Main CLI Entry Point ---
 
 def main():
     """Main entry point for the CLI."""
     try:
-        results = run_analysis()
-        return 0
+        # Parse arguments first
+        parsed_args = parse_arguments(sys.argv[1:]) # Pass actual args
+        args_dict = vars(parsed_args)
+        # --- Add Debug Log ---
+        logger.debug(f"[Main] args_dict passed to workflow: {args_dict}")
+        
+        # Run the refactored workflow orchestrator
+        results = run_analysis_workflow(args_dict)
+        
+        # Optionally log or use results here
+        if results.get("excel_path"):
+            logger.info(f"Analysis report generated: {results['excel_path']}")
+        else:
+            logger.warning("Analysis completed, but no Excel report was generated (possibly due to errors or empty results).")
+            
+        return 0 # Success
+        
     except Exception as e:
-        logger.error(f"Analysis failed: {e}")
+        logger.error(f"Analysis workflow failed: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        return 1
+        return 1 # Failure
 
 if __name__ == "__main__":
     sys.exit(main()) 

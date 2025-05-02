@@ -20,6 +20,7 @@ It's designed to be reusable: plotting methods return Matplotlib Figure/Axes obj
 | `create_horizontal_bar_chart`   | Horizontal bar chart used for Qualification Growth and Provider Gainer/Loser plots.  | Accepts column names as args. **Styling**: Labels appear to the right of bars; spines and horizontal grid removed; vertical line at 0 if needed.<br>**Filtering**: Gainers/Losers plot can be filtered via `config.yaml`.<br>**Captions**: Gainers/Losers caption indicates if filtering was applied. |
 | `create_treemap`                  | Treemap visualizing market share vs. market size for the institution's qualifications. | Accepts column names as args. Static plot using Matplotlib/Squarify. Filtered to active qualifications.           |
 | `create_volume_and_provider_count_plot` | Combined plot showing institution volume (left) and market provider counts (right). | Accepts column names as args. Provider counts based on market for qualifications offered by the institution. |
+| `create_bcg_matrix`               | Bubble chart plotting Market Growth vs. Relative Market Share (BCG style).           | Uses latest year data. Bubble size represents institution volume. Quadrants defined by avg growth & share=1.0. Accepts column names. |
 
 ## Visualization Generation in `analyze_cli.py`
 

@@ -63,6 +63,7 @@ The main method is `analyze()`, which orchestrates all calculations and returns 
 | `overall_total_market_volume`   | Series showing the total market volume across all providers/qualifications for each year.                    | None                                                              |
 | `qualification_market_yoy_growth` | Year-over-Year growth (%) of the *total market size* for each qualification.                               | **Filtered** to exclude qualifications identified as low volume OR inactive for the target institution. |
 | `provider_counts_by_year`       | Count of unique providers and subcontractors operating within the target institution's qualification markets. | None                                                              |
+| `bcg_data`                      | Data for BCG matrix: Latest year Market Growth (%), Relative Market Share, and Institution Volume per qualification. | Based on latest year data from filtered detailed market and growth results. |
 
 *(Note: The underlying calculation methods like `calculate_providers_market` inherently focus on qualifications relevant to the target institution based on the input data provided to the `MarketAnalyzer`.)*
 

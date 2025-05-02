@@ -208,6 +208,7 @@ The analysis typically produces:
 2.  A **PDF report** saved in the main output folder (e.g., `ri_visualizations_[timestamp].pdf`). This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
     *   Institution's total student volumes over time (Stacked Area Chart)
     *   Institution's student volumes vs. total market providers count (Combined Stacked Bar + Grouped Bar)
+    *   Institution's qualifications positioned by Market Growth vs. Relative Market Share (BCG Matrix / Bubble Chart)
     *   Market share evolution for top competitors within active qualifications (Line Charts - one per qualification)
     *   Institution's market share across active qualifications over time (Heatmap)
     *   Year-over-year market growth/decline for active qualifications (Horizontal Bar Chart)

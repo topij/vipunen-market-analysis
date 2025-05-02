@@ -557,6 +557,47 @@ def generate_visualizations(
     else:
         logger.warning("Skipping Volume/Provider Count plot: Required volume or count data is missing.")
 
+    # --- Plot 9: BCG Growth-Share Matrix ---
+    logger.info("Generating BCG Growth-Share Matrix...")
+    bcg_data_df = analysis_results.get('bcg_data')
+    
+    if bcg_data_df is not None and not bcg_data_df.empty:
+        try:
+            # Define column names used in bcg_data
+            bcg_qual_col = qual_col # Use the standard qualification column name
+            bcg_growth_col = 'Market Growth (%)'
+            bcg_share_col = 'Relative Market Share'
+            bcg_size_col = 'Institution Volume'
+            
+            # Check if required columns exist
+            required_bcg_cols = [bcg_qual_col, bcg_growth_col, bcg_share_col, bcg_size_col]
+            if all(c in bcg_data_df.columns for c in required_bcg_cols):
+                plot_title = f"{inst_short_name}: Tutkintojen kasvu vs. markkinaosuus -matriisi ({max_year})"
+                # Construct caption
+                bcg_caption = base_caption + f" Kuplan koko = {inst_short_name} volyymi. Suhteellinen markkinaosuus = {inst_short_name} osuus / Suurimman kilpailijan osuus."
+
+                fig, _ = visualizer.create_bcg_matrix(
+                    data=bcg_data_df,
+                    growth_col=bcg_growth_col,
+                    share_col=bcg_share_col,
+                    size_col=bcg_size_col,
+                    label_col=bcg_qual_col,
+                    title=plot_title,
+                    caption=bcg_caption,
+                    # avg_growth=None, # Use default (mean) or provide a specific value
+                    # share_threshold=1.0 # Use default
+                )
+                visualizer.save_visualization(fig, f"{inst_short_name}_bcg_matrix")
+                plt.close(fig)
+            else:
+                logger.warning(f"Skipping BCG Matrix plot: Missing one or more required columns in bcg_data: {required_bcg_cols}. Found: {bcg_data_df.columns.tolist()}")
+        except Exception as e:
+            logger.error(f"Failed to generate BCG Matrix plot: {e}", exc_info=True)
+            if 'fig' in locals() and plt.fignum_exists(fig.number):
+                plt.close(fig)
+    else:
+        logger.warning("Skipping BCG Matrix plot: bcg_data not available or empty.")
+
     logger.info("Visualization generation completed.")
 
     # --- Close the PDF file if it was opened ---

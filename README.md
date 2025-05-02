@@ -138,11 +138,22 @@ excel_file = export_to_excel(
 )
 print(f"Exported results to {excel_file}")
 
+See the [Tutorial](docs/TUTORIAL.md) for more detailed instructions.
 
+## Architecture Overview
+
+The Vipunen project is organized into a modular structure:
 
 ```
-
-See the [Programmatic Usage Guide](docs/PROGRAMMATIC_USAGE.md) and the [Market Analysis Features](docs/MARKET_ANALYSIS.md) documentation for more details.
+src/vipunen/
+├── analysis/              # Market and qualification analysis
+├── cli/                   # Command-line interface
+├── config/                # Configuration management
+├── data/                  # Data loading and processing
+├── export/                # Data export functionality
+├── utils/                 # Utility functions
+└── visualization/         # Plotting and visualization
+```
 
 ## Configuration (`config.yaml`)
 
@@ -194,8 +205,9 @@ See [Data Requirements](docs/DATA_REQUIREMENTS.md) for full details.
 The analysis typically produces:
 
 1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). The names of the sheets and the column headers within them are configurable via `config.yaml` (see Configuration section). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
-2.  A **PDF report (`visualizations.pdf`)** saved in the main output folder. This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
-    *   Total student volumes over time (Stacked Area Chart)
+2.  A **PDF report** saved in the main output folder (e.g., `ri_visualizations_[timestamp].pdf`). This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
+    *   Institution's total student volumes over time (Stacked Area Chart)
+    *   Institution's student volumes vs. total market providers count (Combined Stacked Bar + Grouped Bar)
     *   Market share evolution for top competitors within active qualifications (Line Charts - one per qualification)
     *   Institution's market share across active qualifications over time (Heatmap)
     *   Year-over-year market growth/decline for active qualifications (Horizontal Bar Chart)
@@ -223,7 +235,8 @@ src/vipunen/
 │   ├── market_share_analyzer.py  # Specialized market share calculations
 │   └── qualification_analyzer.py # Qualification-specific metrics (CAGR)
 ├── cli/                  # Command-line interface logic
-│   ├── ...
+│   ├── analyze_cli.py          # Orchestrates CLI workflow
+│   └── argument_parser.py      # Argument parsing logic
 ├── data/                 # Data loading and processing
 │   ├── data_loader.py    # Functions for loading the raw data
 │   ├── data_processor.py # Functions for cleaning and preparing data

@@ -33,38 +33,42 @@ pip install pandas numpy matplotlib seaborn pathlib PyYAML FileUtils
 
 ## Step 2: Prepare Your Data
 
-Place your data file in the appropriate directory:
+Place your data file in the default directory (`data/raw/`) or note its path.
 
+If you don't have data, you can fetch the latest data from the Vipunen API:
 ```bash
-mkdir -p data/raw
-# Copy your data file to data/raw/
-cp your_data_file.csv data/raw/
+python src/scripts/fetch_data.py
 ```
+This will download the data to `data/raw/` (or as configured in `config.yaml`). See [Data Requirements](DATA_REQUIREMENTS.md) for details.
 
-If you don't have data, you can use the dummy data generator in the next step.
+Alternatively, you can use dummy data for testing (see next step).
 
 ## Step 3: Run a Basic Analysis
 
 The quickest way to run an analysis is using the command-line interface:
 
 ```bash
-# Using real data
-python run_analysis.py --data-file data/raw/your_data_file.csv --institution "Your Institution" --short-name "YI"
+# Using real data (assuming data is in default path and default institution in config is desired)
+python run_analysis.py
+
+# Specify institution and data file
+python run_analysis.py --data-file path/to/your_data_file.csv --institution "Your Institution" --short-name "YI"
 
 # Using dummy data
 python run_analysis.py --use-dummy --institution "Example Institute" --short-name "EI"
 ```
 
-This will generate an Excel file with analysis results in the `data/reports` directory.
+This will generate an Excel file and a PDF report with visualizations in the `data/reports/education_market_[short_name]/` directory.
 
-## Step 4: Customize the Analysis
+## Step 4: Customize the Analysis Programmatically
 
-For more control, you can create a custom script:
+For more control, create a Python script (`custom_analysis.py`) and use the core `MarketAnalyzer`:
 
 ```python
 # custom_analysis.py
 import pandas as pd
 import logging
+from pathlib import Path
 from src.vipunen.data.data_loader import load_data
 from src.vipunen.data.data_processor import clean_and_prepare_data
 # Use the core MarketAnalyzer
@@ -73,6 +77,9 @@ from src.vipunen.analysis.market_analyzer import MarketAnalyzer
 from src.vipunen.export.excel_exporter import export_to_excel 
 # Import config loader
 from src.vipunen.config.config_loader import get_config
+# Import visualizer
+from src.vipunen.visualization.education_visualizer import EducationVisualizer
+import matplotlib.pyplot as plt
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -89,8 +96,10 @@ institution_variants = config['institutions'][institution_key].get('variants', [
 institution_short_name = config['institutions'][institution_key]['short_name']
 qual_types_to_filter = config.get('qualification_types', []) # Example: use types from config
 min_market_size = config.get('analysis', {}).get('min_market_size_threshold', 5)
-output_dir = Path(config['paths']['output']) / f"education_market_{institution_short_name.lower()}"
-output_dir.mkdir(parents=True, exist_ok=True) # Ensure output dir exists
+output_base_dir = config['paths']['output']
+# Create institution-specific output dir path
+output_dir_path = Path(output_base_dir) / f"education_market_{institution_short_name.lower()}"
+output_dir_path.mkdir(parents=True, exist_ok=True) # Ensure output dir exists
 
 # 3. Load data
 try:
@@ -120,31 +129,31 @@ analyzer.institution_short_name = institution_short_name
 
 logger.info("Running analysis...")
 analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size)
-logger.info("Analysis complete.")
+logger.info(f"Analysis complete. Results keys: {list(analysis_results.keys())}")
 
 # 7. Export to Excel (using sheet names from config)
 logger.info("Preparing data for Excel export...")
 excel_data = {}
 sheet_configs = config.get('excel', {}).get('sheets', [])
-analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr', 'qualification_market_yoy_growth'] # Match analyze() output
+# Include all relevant keys from analyze() output
+analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr', 'qualification_market_yoy_growth', 'provider_counts_by_year']
+num_sheets = min(len(sheet_configs), len(analysis_keys)) # Map based on shorter list
 
-if len(sheet_configs) != len(analysis_keys):
-     logger.warning(f"Config sheet count mismatch. Adjusting export based on available analysis keys and config sheets.")
-     # Simple mapping: Use first N sheet names for first N results
-     num_sheets = min(len(sheet_configs), len(analysis_keys))
-     for i in range(num_sheets):
-         sheet_name = sheet_configs[i].get('name', f'Sheet{i+1}')
-         analysis_key = analysis_keys[i]
-         excel_data[sheet_name] = analysis_results.get(analysis_key, pd.DataFrame()).reset_index(drop=True)
-else:
-     # Assumed 1:1 mapping based on order
-     for i, sheet_info in enumerate(sheet_configs):
-         sheet_name = sheet_info.get('name', f'Sheet{i+1}') 
-         analysis_key = analysis_keys[i]
-         excel_data[sheet_name] = analysis_results.get(analysis_key, pd.DataFrame()).reset_index(drop=True)
+for i in range(num_sheets):
+    sheet_name = sheet_configs[i].get('name', f'Sheet{i+1}')
+    analysis_key = analysis_keys[i]
+    # Ensure we handle potential non-DataFrame results (like overall_total_market_volume Series)
+    result_data = analysis_results.get(analysis_key)
+    if isinstance(result_data, pd.DataFrame):
+        excel_data[sheet_name] = result_data.reset_index(drop=True)
+    elif isinstance(result_data, pd.Series):
+        # Convert Series to DataFrame for Excel export
+        excel_data[sheet_name] = result_data.reset_index()
+    else:
+        excel_data[sheet_name] = pd.DataFrame() # Add empty if missing or wrong type
 
 # Ensure the output directory path is a string for the exporter
-output_dir_str = str(output_dir)
+output_dir_str = str(output_dir_path)
 
 try:
     excel_path = export_to_excel(
@@ -156,6 +165,49 @@ try:
     logger.info(f"Exported Excel file to {excel_path}")
 except Exception as export_err:
      logger.error(f"Failed to export Excel: {export_err}", exc_info=True)
+     
+# 8. Generate and Save Visualizations (Example)
+logger.info("Generating example visualizations...")
+visualizer = EducationVisualizer(output_dir=output_dir_path, output_format='pdf')
+
+# Get required dataframes from results
+volume_df = analysis_results.get('total_volumes')
+count_df = analysis_results.get('provider_counts_by_year')
+
+# Get column names from config
+year_col_name = config['columns']['output']['year']
+provider_amount_col_name = config['columns']['output']['provider_amount']
+subcontractor_amount_col_name = config['columns']['output']['subcontractor_amount']
+provider_count_col_name = config['columns']['output'].get('unique_providers_count', 'Unique_Providers_Count')
+subcontractor_count_col_name = config['columns']['output'].get('unique_subcontractors_count', 'Unique_Subcontractors_Count')
+
+# Generate the volume/count plot
+if volume_df is not None and count_df is not None:
+    try:
+        fig, _ = visualizer.create_volume_and_provider_count_plot(
+            volume_data=volume_df,
+            count_data=count_df,
+            title=f"{institution_short_name}: Volume & Providers",
+            volume_title="Volume",
+            count_title="Providers",
+            year_col=year_col_name,
+            vol_provider_col=provider_amount_col_name,
+            vol_subcontractor_col=subcontractor_amount_col_name,
+            count_provider_col=provider_count_col_name,
+            count_subcontractor_col=subcontractor_count_col_name
+        )
+        visualizer.save_visualization(fig, f"{institution_short_name}_example_plot")
+        plt.close(fig)
+        logger.info("Generated and saved example volume/provider count plot.")
+    except Exception as plot_err:
+        logger.error(f"Failed to generate example plot: {plot_err}", exc_info=True)
+        if 'fig' in locals() and plt.fignum_exists(fig.number):
+            plt.close(fig)
+
+# Close the visualizer if PDF output was used
+visualizer.close_pdf()
+logger.info("Custom analysis script finished.")
+
 ```
 
 Run your custom script:
@@ -166,7 +218,9 @@ python custom_analysis.py
 
 ## Step 5: Analyze the Results
 
-Open the generated Excel file to analyze the results. The file contains several worksheets:
+Open the generated Excel file (`*_custom_analysis.xlsx`) and the PDF file (`*_visualizations.pdf`) in the `data/reports/education_market_[short_name]/` directory to analyze the results.
+
+The Excel file contains several worksheets:
 
 1. **Total Volumes**: Shows your institution's yearly student volumes
 2. **Volumes by Qualification**: Detailed volume breakdown by qualification
@@ -175,27 +229,6 @@ Open the generated Excel file to analyze the results. The file contains several 
 5. **Institution Roles**: Analysis of your institution's roles as provider and subcontractor
 
 ## Step 6: Visualize the Data (Optional)
-
-If you want to generate visualizations:
-
-```python
-# Add to your custom script
-from src.vipunen.visualization.volume_plots import plot_total_volumes
-from src.vipunen.visualization.market_plots import plot_market_share_heatmap
-
-# Create visualizations
-plot_total_volumes(
-    volumes_df=total_volumes,
-    institution_short_name=institution_short_name,
-    output_dir="data/reports/figures"
-)
-
-plot_market_share_heatmap(
-    market_shares_df=qual_growth,
-    institution_name=institution_variants[0],
-    output_dir="data/reports/figures"
-)
-```
 
 ## Step 7: Interpreting the Results
 

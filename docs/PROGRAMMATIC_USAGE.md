@@ -16,14 +16,17 @@ from src.vipunen.analysis.market_share_analyzer import calculate_market_shares, 
 from src.vipunen.analysis.qualification_analyzer import analyze_qualification_growth, calculate_cagr_for_groups
 
 # Visualization (optional)
-from src.vipunen.visualization.volume_plots import plot_total_volumes
-from src.vipunen.visualization.market_plots import plot_market_share_heatmap
+from src.vipunen.visualization.education_visualizer import EducationVisualizer
 
 # Export functionality
-from src.vipunen.export.excel_exporter import ExcelExporter
+from src.vipunen.export.excel_exporter import export_to_excel
 
 # FileUtils integration
 from src.vipunen.utils.file_utils_config import get_file_utils
+from FileUtils import OutputFileType
+
+# Add config loader import
+from src.vipunen.config.config_loader import get_config
 ```
 
 ## Complete Analysis Workflow
@@ -33,6 +36,7 @@ Here's a complete workflow example that demonstrates the key components of the a
 ```python
 import pandas as pd
 import logging
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -41,13 +45,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# 1. Define parameters
-data_file = "data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
-institution_name = "Rastor-instituutti ry"
-institution_variants = ["Rastor-instituutti", "Rastor", "Rastor Oy"]
-institution_short_name = "RI"
-output_dir = "data/reports"
-filter_qual_types = True
+# 1. Define parameters (better to load from config or args)
+config = get_config() # Load config
+data_file = config['paths']['data']
+institution_key = 'default' # Example
+institution_variants = config['institutions'][institution_key].get('variants', []) + [config['institutions'][institution_key]['name']]
+institution_short_name = config['institutions'][institution_key]['short_name']
+min_market_size = config.get('analysis', {}).get('min_market_size_threshold', 5)
+output_base_dir = config['paths']['output']
+# Create institution-specific output dir path
+output_dir_path = Path(output_base_dir) / f"education_market_{institution_short_name.lower()}"
+output_dir_path.mkdir(parents=True, exist_ok=True)
 
 # 2. Load and prepare data
 from src.vipunen.data.data_loader import load_data
@@ -66,62 +74,71 @@ if filter_qual_types:
 else:
     df_filtered = df_clean
 
-# 4. Use the EducationMarketAnalyzer for comprehensive analysis
-from src.vipunen.analysis.education_market import EducationMarketAnalyzer
+# 4. Use the MarketAnalyzer for comprehensive analysis
+from src.vipunen.analysis.market_analyzer import MarketAnalyzer
 
-analyzer = EducationMarketAnalyzer(
-    data=df_filtered,
-    institution_names=institution_variants,
-    filter_degree_types=filter_qual_types
-)
+analyzer = MarketAnalyzer(df_filtered, cfg=config) # Pass config
+analyzer.institution_names = institution_variants
+analyzer.institution_short_name = institution_short_name
 
 # 5. Perform various analyses
-total_volumes = analyzer.analyze_total_volume()
-logger.info(f"Analyzed total volumes: {len(total_volumes)} rows")
+analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size)
+logger.info(f"Analysis complete. Results keys: {list(analysis_results.keys())}")
 
-volumes_by_qual = analyzer.analyze_volumes_by_qualification()
-logger.info(f"Analyzed volumes by qualification: {len(volumes_by_qual)} rows")
+# 6. Export results to Excel
+# Use sheet names from config
+excel_data = {}
+sheet_configs = config.get('excel', {}).get('sheets', [])
+analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr', 'qualification_market_yoy_growth', 'provider_counts_by_year']
+num_sheets = min(len(sheet_configs), len(analysis_keys))
+for i in range(num_sheets):
+    sheet_name = sheet_configs[i].get('name', f'Sheet{i+1}')
+    analysis_key = analysis_keys[i]
+    excel_data[sheet_name] = analysis_results.get(analysis_key, pd.DataFrame()).reset_index(drop=True)
 
-institution_roles = analyzer.analyze_institution_roles()
-logger.info(f"Analyzed institution roles: {len(institution_roles)} rows")
-
-# 6. Calculate growth metrics
-qual_growth = analyzer.analyze_qualification_growth()
-logger.info(f"Analyzed qualification growth: {len(qual_growth)} rows")
-
-# Calculate CAGR for qualifications
-all_years = df_filtered['tilastovuosi'].unique()
-cagr_data = analyzer.calculate_qualification_cagr(
-    start_year=min(all_years),
-    end_year=max(all_years)
-)
-logger.info(f"Calculated CAGR for {len(cagr_data)} qualifications")
-
-# 7. Export results to Excel
-from src.vipunen.utils.file_utils_config import get_file_utils
-from FileUtils import OutputFileType
-
-file_utils = get_file_utils()
-
-# Prepare data for Excel export
-excel_data = {
-    "Total Volumes": total_volumes,
-    "Volumes by Qualification": volumes_by_qual,
-    "Provider's Market": qual_growth,
-    "CAGR Analysis": cagr_data,
-    "Institution Roles": institution_roles
-}
-
-# Export to Excel
-excel_path = file_utils.save_data_to_storage(
-    data=excel_data,
-    file_name=f"{institution_short_name}_education_market_analysis",
-    output_type="reports",
-    output_filetype=OutputFileType.XLSX,
-    index=False
+# Use the helper function for export, passing the Path object directly might work
+excel_path = export_to_excel(
+    data_dict=excel_data,
+    file_name=f"{institution_short_name}_programmatic_analysis",
+    output_dir=str(output_dir_path), # Pass the specific dir path as string
+    include_timestamp=True
 )
 logger.info(f"Exported Excel file to {excel_path}")
-```
+
+# 7. Visualize Data (Example: Generate one plot)
+
+visualizer = EducationVisualizer() # Initialize (no output needed for inline)
+
+# Example: Create the volume/provider count plot
+volume_df = analysis_results.get('total_volumes')
+count_df = analysis_results.get('provider_counts_by_year')
+year_col_name = config['columns']['output']['year']
+provider_amount_col_name = config['columns']['output']['provider_amount']
+subcontractor_amount_col_name = config['columns']['output']['subcontractor_amount']
+provider_count_col_name = config['columns']['output'].get('unique_providers_count', 'Unique_Providers_Count')
+subcontractor_count_col_name = config['columns']['output'].get('unique_subcontractors_count', 'Unique_Subcontractors_Count')
+
+if volume_df is not None and count_df is not None:
+    fig, axes = visualizer.create_volume_and_provider_count_plot(
+        volume_data=volume_df,
+        count_data=count_df,
+        title=f"{institution_short_name}: Volume & Providers",
+        volume_title="Volume",
+        count_title="Providers",
+        year_col=year_col_name,
+        vol_provider_col=provider_amount_col_name,
+        vol_subcontractor_col=subcontractor_amount_col_name,
+        count_provider_col=provider_count_col_name,
+        count_subcontractor_col=subcontractor_count_col_name
+    )
+    # In a notebook, fig would display here. To save:
+    # save_path = output_dir_path / "volume_provider_plot.png"
+    # visualizer.save_visualization(fig, str(save_path)) 
+    # logger.info(f"Saved example plot to {save_path}")
+    
+    # Make sure to close the figure if not relying on notebook display
+    import matplotlib.pyplot as plt
+    plt.close(fig)
 
 ## Working with Market Share Analysis
 

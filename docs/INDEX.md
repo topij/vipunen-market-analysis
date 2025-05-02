@@ -51,5 +51,6 @@ src/vipunen/
 - Growth trend identification and CAGR calculations
 - Provider ranking and competitive analysis
 - Excel reporting with multiple worksheets
+- Multi-page PDF report with standard visualizations
 - Command-line interface for easy usage
 - Programmatic access for custom analysis workflows

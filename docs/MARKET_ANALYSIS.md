@@ -18,9 +18,14 @@ The primary class for performing the analysis is `MarketAnalyzer` located in `sr
 
 ```python
 from src.vipunen.analysis.market_analyzer import MarketAnalyzer
+# Import config loader
+from src.vipunen.config.config_loader import get_config
 
 # Assuming 'processed_data' is the cleaned DataFrame
-analyzer = MarketAnalyzer(processed_data)
+# Load config
+config = get_config()
+
+analyzer = MarketAnalyzer(processed_data, cfg=config) # Pass config
 
 # Set institution names (variants used for finding data)
 analyzer.institution_names = institution_variants 
@@ -49,15 +54,15 @@ The main method is `analyze()`, which orchestrates all calculations and returns 
 
 ### Output DataFrames from `analyze()`
 
-| Key in Results Dictionary       | Description                                                                                                | Filtering Applied by `analyze()`                                  |
+| Key in Results Dictionary       | Description                                                                                                | Filtering Applied by `analyze()` logic |
 | :------------------------------ | :--------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------- |
 | `total_volumes`                 | Total student volumes (provider + subcontractor) for the target institution by year.                         | None                                                              |
-| `volumes_by_qualification`      | Student volumes for the target institution, broken down by qualification and year.                           | None (by low volume/inactivity criteria)                          |
-| `market_shares`                 | Simplified Year-over-Year market share comparison for all providers (based on the two most recent years).  | None                                                              |
+| `volumes_by_qualification`      | Student volumes for the target institution, broken down by qualification and year.                           | None (shows all qualifications institution participated in) |
 | `detailed_providers_market`     | Detailed market shares, volumes, ranks for **all providers** within qualifications relevant to the target institution, across **all years**. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
 | `qualification_cagr`            | Compound Annual Growth Rate for qualifications based *only* on the target institution's historical volumes.    | None                                                              |
 | `overall_total_market_volume`   | Series showing the total market volume across all providers/qualifications for each year.                    | None                                                              |
 | `qualification_market_yoy_growth` | Year-over-Year growth (%) of the *total market size* for each qualification.                               | **Filtered** to exclude qualifications identified as low volume OR inactive for the target institution. |
+| `provider_counts_by_year`       | Count of unique providers and subcontractors operating within the target institution's qualification markets. | None                                                              |
 
 *(Note: The underlying calculation methods like `calculate_providers_market` inherently focus on qualifications relevant to the target institution based on the input data provided to the `MarketAnalyzer`.)*
 

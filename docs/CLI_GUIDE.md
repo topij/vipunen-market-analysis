@@ -28,10 +28,9 @@ python run_analysis.py --data-file data/raw/amm_opiskelijat_ja_tutkinnot_vuosi_t
 | `--institution` | `-i` | Main name of the institution to analyze | `Rastor-instituutti ry` |
 | `--short-name` | `-s` | Short name for the institution (used in titles and file names) | `RI` |
 | `--variant` | `-v` | Name variant for the institution (can be specified multiple times) | `[]` |
-| `--output-dir` | `-o` | Base directory for output files | `data/reports/[institution_short_name]/` |
+| `--output-dir` | `-o` | Base directory for output files | `data/reports/` (subfolder `education_market_[short_name]` is created) |
 | `--use-dummy` | `-u` | Use dummy data instead of loading from file | `False` |
 | `--filter-qual-types` | N/A | Filter data to include only ammattitutkinto and erikoisammattitutkinto | `False` |
-| `--filter-by-institution-quals` | N/A | Filter data to include only qualifications offered by the institution | `False` |
 
 ### `fetch_data.py` Arguments
 
@@ -80,14 +79,6 @@ To analyze only ammattitutkinto and erikoisammattitutkinto qualifications:
 python run_analysis.py --institution "Rastor-instituutti ry" --filter-qual-types
 ```
 
-### Filter by Institution's Qualifications
-
-To focus only on qualifications that the institution offers:
-
-```bash
-python run_analysis.py --institution "Rastor-instituutti ry" --filter-by-institution-quals
-```
-
 ## Using Dummy Data
 
 For testing or demonstration purposes, you can use dummy data:
@@ -98,7 +89,11 @@ python run_analysis.py --institution "Example Institute" --use-dummy
 
 ## Output Directory
 
-By default, outputs are saved to `data/reports/[institution_short_name]/`. Within this directory, an Excel file (see [Excel Export](EXCEL_EXPORT.md)) and a `plots` subdirectory (see [Visualization Features](VISUALIZATION.md)) will be created.
+By default, outputs are saved to `data/reports/`. A subdirectory named `education_market_[institution_short_name]` is created within this base directory to store the analysis results for the specific institution.
+
+Within this subdirectory:
+- An Excel file (e.g., `ri_market_analysis_[timestamp].xlsx`) is generated.
+- A PDF file (e.g., `ri_visualizations_[timestamp].pdf`) containing all generated plots is created.
 
 You can specify a different *base* output directory:
 
@@ -119,14 +114,12 @@ python run_analysis.py \
   --variant "Rastor Oy" \
   --variant "Rastor" \
   --output-dir "reports/rastor_analysis_2023" \
-  --filter-qual-types \
-  --filter-by-institution-quals
+  --filter-qual-types
 ```
 
 This command will:
 1. Load data from the specified CSV file
 2. Analyze data for "Rastor-instituutti" and its variants
 3. Use "RI" as a short name in titles and filenames
-4. Save results to "reports/rastor_analysis_2023"
-5. Filter to only include ammattitutkinto and erikoisammattitutkinto
-6. Filter to focus only on qualifications offered by Rastor-instituutti 
+4. Save results to "reports/rastor_analysis_2023/education_market_ri/"
+5. Filter to only include ammattitutkinto and erikoisammattitutkinto 

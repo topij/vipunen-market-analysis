@@ -7,17 +7,19 @@ This document provides a brief overview of the visualization capabilities provid
 The `src/vipunen/visualization/education_visualizer.py` module contains the `EducationVisualizer` class, which offers methods to create various standard plots based on the analysis results from `MarketAnalyzer` (see [Market Analysis Features](MARKET_ANALYSIS.md)).
 
 The CLI script (`src/vipunen/cli/analyze_cli.py`) uses this class in its `generate_visualizations` function to automatically create a suite of plots.
+It's designed to be reusable: plotting methods return Matplotlib Figure/Axes objects, which can then be displayed inline (e.g., in Jupyter) or saved to a file/PDF using the `save_visualization()` method.
 
 ## Key Visualization Methods in `EducationVisualizer`
 
 | Method Name                       | Description                                                                          | Key Customizations/Notes                                                                                                |
 | :-------------------------------- | :----------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- |
-| `create_area_chart`               | Stacked area chart showing total volume breakdown (e.g., Provider vs Subcontractor). | Colors, labels configurable.                                                                                            |
-| `create_line_chart`               | Line chart comparing market share evolution over time for different providers.       | Generated for **all** active qualifications (not just top N). Shows top 6 providers per qualification by default.        |
-| `create_heatmap`                  | Heatmap showing the target institution's market share across qualifications and years. | Filtered to show only active qualifications for the institution.                                                      |
-| `create_heatmap_with_marginals` | Combines the institution share heatmap with marginal plots for total market volume.    | Filtered to show only active qualifications for the institution.                                                      |
-| `create_horizontal_bar_chart`   | Horizontal bar chart used for Qualification Growth and Provider Gainer/Loser plots.  | **Styling**: Labels appear to the right of bars; spines and horizontal grid removed; vertical line at 0 if needed.<br>**Filtering**: Gainers/Losers plot can be filtered via `config.yaml`.<br>**Captions**: Gainers/Losers caption indicates if filtering was applied. |
-| `create_treemap`                  | Treemap visualizing market share vs. market size for the institution's qualifications. | Static plot using Matplotlib/Squarify. Filtered to active qualifications.                                                |
+| `create_area_chart`               | Stacked area chart showing total volume breakdown (e.g., Provider vs Subcontractor). | Accepts column names as args. Colors, labels configurable.                                                              |
+| `create_line_chart`               | Line chart comparing market share evolution over time for different providers.       | Accepts column names as args. Generated for **all** active qualifications. Shows top 6 providers per qualification by default. |
+| `create_heatmap`                  | Heatmap showing the target institution's market share across qualifications and years. | Accepts column names as args. Filtered to show only active qualifications for the institution.                      |
+| `create_heatmap_with_marginals` | Combines the institution share heatmap with marginal plots for total market volume.    | Accepts column names as args. Filtered to show only active qualifications for the institution.                        |
+| `create_horizontal_bar_chart`   | Horizontal bar chart used for Qualification Growth and Provider Gainer/Loser plots.  | Accepts column names as args. **Styling**: Labels appear to the right of bars; spines and horizontal grid removed; vertical line at 0 if needed.<br>**Filtering**: Gainers/Losers plot can be filtered via `config.yaml`.<br>**Captions**: Gainers/Losers caption indicates if filtering was applied. |
+| `create_treemap`                  | Treemap visualizing market share vs. market size for the institution's qualifications. | Accepts column names as args. Static plot using Matplotlib/Squarify. Filtered to active qualifications.           |
+| `create_volume_and_provider_count_plot` | Combined plot showing institution volume (left) and market provider counts (right). | Accepts column names as args. Provider counts based on market for qualifications offered by the institution. |
 
 ## Visualization Generation in `analyze_cli.py`
 
@@ -33,9 +35,8 @@ The `generate_visualizations` function in `analyze_cli.py` (see [CLI Guide](CLI_
 
 ## Output Formats
 
-Visualizations are saved as PNG files by default in the specified output directory (e.g., `data/reports/[institution_short_name]/plots/`). Filenames typically include:
-- The institution short name
-- The type of visualization or qualification name
+When run via the CLI, visualizations are typically saved into a multi-page PDF file in the institution-specific output directory (e.g., `data/reports/education_market_ri/ri_visualizations_[timestamp].pdf`).
+If the `EducationVisualizer` is configured with `output_format='png'`, individual PNG files will be saved instead.
 
 ## Customization
 

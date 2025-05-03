@@ -90,6 +90,8 @@ api:
 
 # Excel export settings
 # excel:
+  # metadata_sheet_name: Analysis Info # Name for the sheet containing metadata
+
   # sheets:
   #   - name: "Total Volumes"
   #     description: "Total student volumes by year"
@@ -102,9 +104,10 @@ api:
 
 # Finnish excel
 excel:
+  metadata_sheet_name: Analyysin tiedot # Name for the sheet containing metadata
   sheets:
     - name: "NOM Yhteensä"
-      description: "Netto-opiskelijamäärä yhteensä"
+      description: "Institution total volumes by year (provider vs subcontractor)"
     - name: "Oppilaitoksen NOM tutkinnoittain"
       description: "Student volumes broken down by qualification"
     - name: "Oppilaitoksen koko markkina"

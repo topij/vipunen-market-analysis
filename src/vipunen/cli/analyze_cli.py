@@ -209,6 +209,7 @@ def export_analysis_results(
     config: Dict[str, Any], 
     institution_short_name: str, 
     base_output_path: str, # Changed from args to direct path
+    metadata_df: Optional[pd.DataFrame] = None, 
     include_timestamp: bool = True
 ) -> Optional[str]:
     """
@@ -219,6 +220,7 @@ def export_analysis_results(
         config: Configuration dictionary.
         institution_short_name: Short name for the institution.
         base_output_path: Base directory for output (e.g., 'data/reports').
+        metadata_df: Optional DataFrame containing analysis metadata.
         include_timestamp: Whether to include a timestamp in the filename.
 
     Returns:
@@ -245,29 +247,47 @@ def export_analysis_results(
         full_output_dir_path.mkdir(parents=True, exist_ok=True)
         logger.info(f"Ensured base output directory exists: {full_output_dir_path}")
         
-        # Prepare Excel data
+        # Prepare Excel data dictionary
         excel_data = {}
-        sheet_configs = config.get('excel', {}).get('sheets', [])
-        # Define expected keys based on perform_market_analysis return value
-        analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr'] 
-        
-        if len(sheet_configs) != len(analysis_keys):
-             logger.warning(f"Mismatch between sheet configs ({len(sheet_configs)}) and analysis results ({len(analysis_keys)}). Using default names.")
-             excel_data = { # Fallback using known keys
-                 "Total Volumes": analysis_results.get('total_volumes', pd.DataFrame()).reset_index(drop=True),
-                 "Volumes by Qualification": analysis_results.get('volumes_by_qualification', pd.DataFrame()).reset_index(drop=True),
-                 "Provider's Market": analysis_results.get("detailed_providers_market", pd.DataFrame()).reset_index(drop=True),
-                 "CAGR Analysis": analysis_results.get('qualification_cagr', pd.DataFrame()).reset_index(drop=True)
-             }
-        else:
-             for i, sheet_info in enumerate(sheet_configs):
-                 sheet_name = sheet_info.get('name', f'Sheet{i+1}')
-                 analysis_key = analysis_keys[i] 
-                 df = analysis_results.get(analysis_key, pd.DataFrame())
-                 excel_data[sheet_name] = df.reset_index(drop=True) if not df.empty else df
-                 logger.info(f"Mapping analysis key '{analysis_key}' to Excel sheet '{sheet_name}'")
 
-        # Export
+        # --- Add Metadata Sheet ---
+        if metadata_df is not None and not metadata_df.empty:
+            # Get sheet name from config, fallback to default
+            metadata_sheet_name = config.get('excel', {}).get('metadata_sheet_name', "Analysis Info")
+            excel_data[metadata_sheet_name] = metadata_df
+            logger.info(f"Adding metadata sheet: '{metadata_sheet_name}'")
+        else:
+            logger.warning("Metadata DataFrame not provided or is empty. Skipping metadata sheet.")
+        # --- End Metadata Sheet ---
+
+        # Map analysis results to sheet names from config
+        sheet_configs = config.get('excel', {}).get('sheets', [])
+        analysis_keys = ['total_volumes', 'volumes_by_qualification', 'detailed_providers_market', 'qualification_cagr'] 
+
+        # Basic check: only map the first 4 sheets if config matches expected length
+        if len(sheet_configs) >= len(analysis_keys):
+            for i, sheet_info in enumerate(sheet_configs[:len(analysis_keys)]): # Iterate only up to available keys
+                sheet_name = sheet_info.get('name', f'DataSheet{i+1}') # Fallback name
+                analysis_key = analysis_keys[i] 
+                df = analysis_results.get(analysis_key, pd.DataFrame())
+                # Only add non-empty DataFrames to avoid empty sheets
+                if isinstance(df, pd.DataFrame) and not df.empty:
+                     excel_data[sheet_name] = df.reset_index(drop=True)
+                     logger.info(f"Mapping analysis key '{analysis_key}' to Excel sheet '{sheet_name}'")
+                elif isinstance(df, pd.Series) and not df.empty: # Handle Series if necessary
+                     excel_data[sheet_name] = df.reset_index() # Convert Series to DataFrame
+                     logger.info(f"Mapping analysis key '{analysis_key}' (Series) to Excel sheet '{sheet_name}'")
+                else:
+                     logger.warning(f"Skipping empty or invalid data for key '{analysis_key}' (Sheet: '{sheet_name}')")
+        else:
+            logger.warning(f"Mismatch between excel sheet configs ({len(sheet_configs)}) and expected analysis results ({len(analysis_keys)}). Exporting only metadata if available.")
+            # Only metadata sheet will be present in excel_data if it was added
+
+        # Export (only if there's data to export)
+        if not excel_data:
+             logger.error("No data available to export to Excel (neither analysis results nor metadata).")
+             return None
+             
         excel_path = export_to_excel(
             data_dict=excel_data,
             file_name=f"{institution_short_name.lower()}_market_analysis",
@@ -671,6 +691,20 @@ def run_analysis_workflow(args: Dict[str, Any]) -> Dict[str, Any]:
          logger.warning("Analysis resulted in empty 'detailed_providers_market' data. Skipping export and visualization.")
          return {"analysis_results": analysis_results, "excel_path": None}
          
+    # --- Create Metadata ---
+    logger.info("Creating metadata for export...")
+    metadata = {
+        "Analysis Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "Institution Analyzed": f"{config['institutions'][institution_key]['name']} ({institution_short_name})",
+        "Institution Variants Used": ", ".join(institution_variants),
+        "Input Data File": args.get('data_file', config.get('paths',{}).get('data', 'N/A')),
+        "Data Update Date": data_update_date_str,
+        "Qualification Type Filter Applied": "Yes" if filter_qual_types else "No",
+        "Min Market Size Threshold": config.get('analysis', {}).get('min_market_size_threshold', 'N/A')
+    }
+    metadata_df = pd.DataFrame(metadata.items(), columns=["Parameter", "Value"])
+    # --- End Create Metadata ---
+         
     # Step 4: Export Results to Excel
     # Explicitly handle None from args.get('output_dir')
     output_dir_arg = args.get('output_dir')
@@ -685,7 +719,11 @@ def run_analysis_workflow(args: Dict[str, Any]) -> Dict[str, Any]:
     # Remove the previous debug log
     # logger.debug(f"[Workflow] base_output_path before export: '{base_output_path}' (Type: {type(base_output_path)})")
     excel_path = export_analysis_results(
-        analysis_results, config, institution_short_name, base_output_path
+        analysis_results, 
+        config, 
+        institution_short_name, 
+        base_output_path,
+        metadata_df=metadata_df # Pass the created metadata DataFrame
     )
 
     # Step 5: Generate Visualizations

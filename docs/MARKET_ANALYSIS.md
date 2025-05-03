@@ -50,6 +50,7 @@ The main method is `analyze()`, which orchestrates all calculations and returns 
     *   The combined list of qualifications identified in step 2 (low volume OR inactive) is used to filter **only** the `qualification_market_yoy_growth` results. This focuses growth trend analysis on more relevant qualifications.
     *   The `detailed_providers_market` DataFrame is **not** filtered based on the combined list, preserving the historical view of all qualifications the institution participated in. However, individual rows where a provider's `Total Volume` is exactly 0 *are* removed from this specific DataFrame to clean the output.
     *   The `volumes_by_qualification` and `qualification_cagr` DataFrames remain **unfiltered** by the low volume/inactivity criteria, providing a complete historical perspective for the institution.
+    *   **Summary of Threshold Impact:** The `min_market_size_threshold` filters out qualifications with very small total market sizes from the Year-over-Year market growth results (`qualification_market_yoy_growth`), aiming to focus that specific analysis on more substantial markets. It does **not** filter the main `detailed_providers_market` DataFrame based on this threshold.
 4.  **Return Results**: Returns a dictionary containing all calculated DataFrames (some filtered, some not).
 
 ### Output DataFrames from `analyze()`

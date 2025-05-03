@@ -90,10 +90,11 @@ To include additional results like `bcg_data` or `provider_counts_by_year` in th
 *   Modify the mapping logic within the `export_analysis_results` function in `src/vipunen/cli/analyze_cli.py`.
 *   Ensure the `config.yaml` sheet configuration (`excel.sheets`) explicitly lists and maps these additional result keys to desired sheet names, and update the mapping logic in `export_analysis_results` accordingly.
 
-The actual names of these worksheets are defined in `config.yaml` under `excel.sheets`. The names listed below describe the *content* of each sheet typically exported in the default configuration.
+The actual names of these worksheets are defined in `config.yaml` under `excel.sheets` (and `excel.metadata_sheet_name`). The names listed below describe the *content* of each sheet typically exported in the default configuration.
 
 | Default Worksheet Name     | Content                                                                                                   | Filtering Applied (based on `analyze()` logic) |
 | :------------------------- | :-------------------------------------------------------------------------------------------------------- | :--------------------------------------------- |
+| **Analysis Info**          | Key details about the analysis run: Run Timestamp, Institution Analyzed, Input Data File, Data Update Date, Filters Applied, Thresholds Used. | N/A                                            |
 | **NOM Yhteensä**           | Institution's total volumes by year, broken down by provider vs. subcontractor roles.                       | None                                           |
 | **Oppilaitoksen NOM tutkinnoittain** | Student volumes for the target institution for each qualification by year.                                  | None (shows all qualifications institution participated in) |
 | **Oppilaitoksen koko markkina** | Comprehensive market data (shares, ranks, volumes) for **all providers** across **all years** for qualifications relevant to the target institution. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
@@ -107,13 +108,17 @@ The actual names of these worksheets are defined in `config.yaml` under `excel.s
 
 Column names within each sheet are also configurable via `config.yaml` under `columns.output`. The structure below shows the *default Finnish* column names for each sheet content type:
 
-1.  **Total Volumes Sheet Content**:
+1.  **Analysis Info Sheet Content**:
+    *   `Parameter`
+    *   `Value`
+
+2.  **Total Volumes Sheet Content**:
     *   `Vuosi`
     *   `NOM järjestäjänä`
     *   `NOM hankintana`
     *   `NOM yhteensä`
 
-2.  **Volumes by Qualification Sheet Content**:
+3.  **Volumes by Qualification Sheet Content**:
     *   `Vuosi`
     *   `Tutkinto`
     *   `NOM järjestäjänä`
@@ -122,7 +127,7 @@ Column names within each sheet are also configurable via `config.yaml` under `co
     *   `Markkina yhteensä`
     *   `Markkinaosuus (%)`
 
-3.  **Detailed Provider Market Sheet Content**:
+4.  **Detailed Provider Market Sheet Content**:
     *   `Vuosi`
     *   `Tutkinto`
     *   `Oppilaitos`
@@ -135,7 +140,7 @@ Column names within each sheet are also configurable via `config.yaml` under `co
     *   `Markkinaosuuden kasvu (%)`
     *   `Sijoitus markkinaosuuden kasvun mukaan`
 
-4.  **CAGR Analysis Sheet Content**:
+5.  **CAGR Analysis Sheet Content**:
     *   `Tutkinto`
     *   `CAGR (%)`
     *   `Aloitusvuosi`
@@ -144,19 +149,19 @@ Column names within each sheet are also configurable via `config.yaml` under `co
     *   `Viimeisen vuoden volyymi`
     *   `Vuosia datassa`
 
-5.  **(Potential) Qual Market YoY Growth Sheet Content**:
+6.  **(Potential) Qual Market YoY Growth Sheet Content**:
     *   `Tutkinto`
     *   `Vuosi`
     *   `Markkina yhteensä`
     *   `Markkina yhteensä YoY Growth (%)`
 
-6.  **(Potential) BCG Data Sheet Content**:
+7.  **(Potential) BCG Data Sheet Content**:
     *   `Tutkinto`
     *   `Market Growth (%)`
     *   `Relative Market Share`
     *   `Institution Volume`
 
-7.  **(Potential) Provider Counts Sheet Content**:
+8.  **(Potential) Provider Counts Sheet Content**:
     *   `Vuosi`
     *   `Unique_Providers_Count` (or config name)
     *   `Unique_Subcontractors_Count` (or config name)

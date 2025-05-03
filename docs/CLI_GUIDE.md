@@ -53,7 +53,7 @@ Key configuration options relevant to the analysis workflow include:
 *   `columns`: Defines the mapping between expected column names (like `year`, `qualification`, `provider`, `volume`, `update_date`) and the actual column names in your input CSV file.
     *   `columns.input.update_date`: Specifies the column in the raw data containing the data update timestamp (e.g., `tietojoukkoPaivitettyPvm`), which is used in plot captions.
 *   `analysis`:
-    *   `min_market_size_threshold`: Minimum total market size for a qualification in the reference year to be included in the `detailed_providers_market` calculation and output sheet.
+    *   `min_market_size_threshold`: Minimum total market size for a qualification in the reference year(s) to be considered significant. Qualifications below this threshold (in both latest year and previous year) will be excluded **only** from the Year-over-Year market growth results (`qualification_market_yoy_growth`) to focus that analysis on more substantial markets. It does **not** filter the main `detailed_providers_market` DataFrame based on this threshold.
     *   `active_qualification_min_volume_sum`: Minimum summed volume the target institution must have across the last two full years for a qualification to be considered "active" for plot filtering (e.g., Heatmap, Line charts). Default is 3 (requiring summed volume > 2).
     *   `gainers_losers`:
         *   `min_market_share_threshold`: Optional. Minimum market share (%) a provider needs in the reference year to be included in the Gainers/Losers plot. Defaults to `null` (disabled).

@@ -216,7 +216,7 @@ See [Data Requirements](docs/DATA_REQUIREMENTS.md) for full details.
 
 The analysis typically produces:
 
-1.  An **Excel file** containing multiple sheets with detailed analysis results (total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). The names of the sheets and the column headers within them are configurable via `config.yaml` (see Configuration section). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
+1.  An **Excel file** containing multiple sheets with detailed analysis results (including an "Analysis Info" sheet with run parameters, plus sheets for total volumes, volumes by qualification, detailed provider market data, CAGR, etc.). The names of the sheets and the column headers within them are configurable via `config.yaml` (see Configuration section). See [Excel Export Documentation](docs/EXCEL_EXPORT.md).
 2.  A **PDF report** saved in the main output folder (e.g., `ri_visualizations_[timestamp].pdf`). This PDF contains multiple pages, each displaying a plot with a 16:9 aspect ratio. The plots include:
     *   Institution's total student volumes over time (Stacked Area Chart)
     *   Institution's student volumes vs. total market providers count (Combined Stacked Bar + Grouped Bar)

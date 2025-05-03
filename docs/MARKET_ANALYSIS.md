@@ -63,10 +63,12 @@ The main method is `analyze()`, which orchestrates all calculations and returns 
 | `overall_total_market_volume`   | Series showing the total market volume across all providers/qualifications for each year.                    | None                                                              |
 | `qualification_market_yoy_growth` | Year-over-Year growth (%) of the *total market size* for each qualification.                               | **Filtered** to exclude qualifications identified as low volume OR inactive for the target institution. |
 | `provider_counts_by_year`       | Count of unique providers and subcontractors operating within the target institution's qualification markets. | None                                                              |
-| `bcg_data`                      | Data for BCG matrix: Latest year Market Growth (%), Relative Market Share, and Institution Volume per qualification. | Based on latest year data from filtered detailed market and growth results. |
+| `bcg_data`                      | Data prepared for BCG Matrix plot, containing latest market growth, relative market share, and institution volume per qualification. | Implicitly filtered by qualifications present in latest year data used for calculation. |
 
-*(Note: The underlying calculation methods like `calculate_providers_market` inherently focus on qualifications relevant to the target institution based on the input data provided to the `MarketAnalyzer`.)*
-
+*(Note: The underlying calculation methods like `calculate_providers_market` inherently focus on qualifications relevant to the target institution based on the input data provided to the `MarketAnalyzer`.)*\
+\
+**Interpreting the BCG Matrix**: It's worth noting that while the BCG matrix provides a useful framework, the predictive power of market share has evolved. BCG suggests using the matrix thoughtfully in modern contexts ([BCG Classics Revisited](https://www.bcg.com/publications/2014/growth-share-matrix-bcg-classics-revisited)).\
+\
 ## Analysis Workflow Example (using `analyze_cli.py`)
 
 The `src/vipunen/cli/analyze_cli.py` script (see [CLI Guide](CLI_GUIDE.md)) orchestrates the typical workflow:

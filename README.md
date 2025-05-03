@@ -224,8 +224,7 @@ The analysis typically produces:
     *   Institution's market share across active qualifications over time (Heatmap)
     *   Market share gainers/losers for active qualifications (Horizontal Bar Charts - one per qualification)
     *   Treemap showing institution's market share vs. qualification size for the reference year (Static plot using Matplotlib/Squarify).
-    *   BCG Growth-Share Matrix (Bubble Chart) showing qualification growth vs. relative market share.
-    *   *(Note: The "Heatmap with Marginals" plot is currently excluded from the PDF output.)*
+    *   BCG Growth-Share Matrix (Bubble Chart) showing qualification growth vs. relative market share. (**Note:** Interpret with care, see [BCG article](https://www.bcg.com/publications/2014/growth-share-matrix-bcg-classics-revisited)).
 3.  Console logs detailing the analysis progress.
 
 The main output folder is named based on the institution's short name (e.g., `education_market_ri`).

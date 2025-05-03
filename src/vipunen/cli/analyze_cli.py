@@ -656,10 +656,15 @@ def run_analysis_workflow(args: Dict[str, Any]) -> Dict[str, Any]:
         return {"analysis_results": {}, "excel_path": None} 
 
     # Step 3: Perform Analysis
-    analysis_results, analyzer = perform_market_analysis(
-        df_clean, config, institution_variants, institution_short_name, filter_qual_types
-    )
-    
+    try:
+        analysis_results, analyzer = perform_market_analysis(
+            df_clean, config, institution_variants, institution_short_name, filter_qual_types
+        )
+    except Exception as analysis_err:
+        logger.error(f"Market analysis execution failed: {analysis_err}", exc_info=True)
+        # Return minimal results indicating failure, similar to data prep failure
+        return {"analysis_results": {}, "excel_path": None}
+
     # Check if analysis produced meaningful results before proceeding
     # A simple check could be if the main DataFrame is not empty
     if analysis_results.get("detailed_providers_market", pd.DataFrame()).empty:

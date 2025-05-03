@@ -83,62 +83,74 @@ See the full [CLI Guide](docs/CLI_GUIDE.md) for all available arguments and opti
 
 ### Programmatic Usage
 
-For more advanced customization, you can use the `MarketAnalyzer` class directly in your Python scripts. The primary workflow involves:
-
-1.  Loading and preparing data (see `src/vipunen/data/`).
-2.  Initializing `MarketAnalyzer` with the data and institution details.
-3.  Calling the `analyze()` method.
-4.  Using the resulting dictionary of DataFrames for export or further analysis.
+For more advanced customization, you can use the analysis functions directly. The recommended approach is to import and use the workflow functions from `src/vipunen/cli/analyze_cli.py` which mirror the CLI execution flow:
 
 ```python
-from src.vipunen.data.data_loader import load_data
-from src.vipunen.data.data_processor import clean_and_prepare_data
-from src.vipunen.analysis.market_analyzer import MarketAnalyzer
-from src.vipunen.export.excel_exporter import export_to_excel # Example exporter
-# Import config loader
+import pandas as pd
+from pathlib import Path
 from src.vipunen.config.config_loader import get_config
+from src.vipunen.cli.analyze_cli import (
+    prepare_analysis_data,
+    perform_market_analysis,
+    export_analysis_results,
+    generate_visualizations
+)
+from src.vipunen.visualization.education_visualizer import EducationVisualizer
 
-# Configuration (example)
-data_path = "amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto.csv"
-institution_name = "Rastor-instituutti ry"
-institution_variants = ["Rastor-instituutti ry", "Rastor Oy"]
-institution_short_name = "RI"
-min_market_size_threshold = 5
-output_dir = "data/reports/education_market_ri"
-
-# Load config
+# --- 1. Configuration & Arguments ---
+# Load main config
 config = get_config()
 
-# Load and prepare data
-raw_data = load_data(data_path)
-processed_data = clean_and_prepare_data(raw_data) # Apply cleaning as needed
-
-# Initialize analyzer, passing the config
-analyzer = MarketAnalyzer(processed_data, cfg=config)
-analyzer.institution_names = institution_variants
-analyzer.institution_short_name = institution_short_name
-
-# Run analysis
-analysis_results = analyzer.analyze(min_market_size_threshold=min_market_size_threshold)
-
-# Export (example)
-# Note: Sheet names and column names in the output are controlled by config.yaml
-excel_data = {
-    config['excel']['sheets'][0]['name']: analysis_results.get('total_volumes'),
-    config['excel']['sheets'][1]['name']: analysis_results.get('volumes_by_qualification'),
-    config['excel']['sheets'][2]['name']: analysis_results.get('detailed_providers_market'),
-    config['excel']['sheets'][3]['name']: analysis_results.get('qualification_cagr')
-    # Add other results as needed, mapping to config sheet names
+# Simulate command-line arguments or define them programmatically
+# These override defaults in config where applicable
+args = {
+    'data_file': config['paths']['data'],  # Use path from config
+    'institution': config['institutions']['default']['name'],
+    'short_name': config['institutions']['default']['short_name'],
+    'variants': [],  # Or specify variants: ['Var1', 'Var2']
+    'output_dir': config.get('paths', {}).get('output', 'data/reports'), # Use output path from config
+    'use_dummy': False,
+    'filter_qual_types': False,
+    'plot_format': 'pdf'
 }
 
-excel_file = export_to_excel(
-    excel_data,
-    f"{institution_short_name}_analysis",
-    output_dir=output_dir
-)
-print(f"Exported results to {excel_file}")
+# --- 2. Prepare Data ---
+# This loads data, cleans it, and determines institution details
+df_clean, inst_key, inst_variants, inst_short_name, data_update_date, filter_quals = prepare_analysis_data(config, args)
 
-See the [Tutorial](docs/TUTORIAL.md) for more detailed instructions.
+# --- 3. Perform Analysis ---
+# This runs the MarketAnalyzer
+analysis_results, analyzer_instance = perform_market_analysis(
+    df_clean, config, inst_variants, inst_short_name, filter_quals
+)
+
+# --- 4. Export Results (Optional) ---
+if not analysis_results.get("detailed_providers_market", pd.DataFrame()).empty:
+    excel_file = export_analysis_results(
+        analysis_results, config, inst_short_name, args['output_dir']
+    )
+    print(f"Exported results to {excel_file}")
+
+# --- 5. Generate Visualizations (Optional) ---
+if not analysis_results.get("detailed_providers_market", pd.DataFrame()).empty:
+    viz_dir = Path(args['output_dir']) / f"education_market_{inst_short_name.lower()}"
+    viz_dir.mkdir(parents=True, exist_ok=True)
+    visualizer = EducationVisualizer(
+        output_dir=viz_dir,
+        output_format=args.get('plot_format', 'pdf'),
+        institution_short_name=inst_short_name
+    )
+    try:
+        generate_visualizations(
+            analysis_results, visualizer, analyzer_instance, config, data_update_date
+        )
+    finally:
+        visualizer.close_pdf() # Ensure PDF is closed
+    print(f"Visualizations saved in {viz_dir}")
+
+```
+
+See the [Tutorial](docs/TUTORIAL.md) and `src/vipunen/cli/analyze_cli.py` for more detailed examples.
 
 ## Architecture Overview
 
@@ -210,9 +222,9 @@ The analysis typically produces:
     *   Institution's student volumes vs. total market providers count (Combined Stacked Bar + Grouped Bar)
     *   Market share evolution for top competitors within active qualifications (Line Charts - one per qualification)
     *   Institution's market share across active qualifications over time (Heatmap)
-    *   Year-over-year market growth/decline for active qualifications (Horizontal Bar Chart)
     *   Market share gainers/losers for active qualifications (Horizontal Bar Charts - one per qualification)
     *   Treemap showing institution's market share vs. qualification size for the reference year (Static plot using Matplotlib/Squarify).
+    *   BCG Growth-Share Matrix (Bubble Chart) showing qualification growth vs. relative market share.
     *   *(Note: The "Heatmap with Marginals" plot is currently excluded from the PDF output.)*
 3.  Console logs detailing the analysis progress.
 

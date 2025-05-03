@@ -83,9 +83,14 @@ def export_to_excel(data_dict, file_name, output_type="reports", **kwargs):
 
 ## Standard Excel Worksheets
 
-The standard Excel export, generated using the results from `MarketAnalyzer.analyze()` (see [Market Analysis Features](MARKET_ANALYSIS.md) for details on filtering), includes the following worksheets. 
+The standard Excel export, generated using the results from `MarketAnalyzer.analyze()` (see [Market Analysis Features](MARKET_ANALYSIS.md) for details on filtering), includes the following worksheets.
 
-**Note:** The actual names of these worksheets are defined in `config.yaml` under `excel.sheets`. The names listed below describe the *content* of each sheet in the default configuration.
+**Important Note:** The default implementation of `export_analysis_results` in `analyze_cli.py` currently only maps the core analysis results (`total_volumes`, `volumes_by_qualification`, `detailed_providers_market`, `qualification_cagr`) to the first four sheet names defined in `config.yaml['excel']['sheets']`.
+To include additional results like `bcg_data` or `provider_counts_by_year` in the Excel output, you would need to either:
+*   Modify the mapping logic within the `export_analysis_results` function in `src/vipunen/cli/analyze_cli.py`.
+*   Ensure the `config.yaml` sheet configuration (`excel.sheets`) explicitly lists and maps these additional result keys to desired sheet names, and update the mapping logic in `export_analysis_results` accordingly.
+
+The actual names of these worksheets are defined in `config.yaml` under `excel.sheets`. The names listed below describe the *content* of each sheet typically exported in the default configuration.
 
 | Default Worksheet Name     | Content                                                                                                   | Filtering Applied (based on `analyze()` logic) |
 | :------------------------- | :-------------------------------------------------------------------------------------------------------- | :--------------------------------------------- |
@@ -93,7 +98,9 @@ The standard Excel export, generated using the results from `MarketAnalyzer.anal
 | **Oppilaitoksen NOM tutkinnoittain** | Student volumes for the target institution for each qualification by year.                                  | None (shows all qualifications institution participated in) |
 | **Oppilaitoksen koko markkina** | Comprehensive market data (shares, ranks, volumes) for **all providers** across **all years** for qualifications relevant to the target institution. | Rows with `Total Volume == 0` removed. **Not** filtered by low market size or institution inactivity. |
 | **CAGR analyysi**          | Detailed qualification history based *only* on the target institution's volumes, including CAGR calculation. | None (shows all qualifications institution ever offered with sufficient data) |
-| *(Potentially) **Qual Market YoY Growth** * | Year-over-Year growth (%) of the *total market size* for each qualification.                              | **Filtered** to exclude qualifications identified in `analyze()` as low volume OR inactive for the target institution. |
+| *(Potentially) **Qual Market YoY Growth** * | Year-over-Year growth (%) of the *total market size* for each qualification.                              | **Filtered** to exclude qualifications identified in `analyze()` as low volume OR inactive for the target institution. (**Note:** Not exported by default) |
+| *(Potentially) **BCG Data** *         | Data for BCG plot (Market Growth, Relative Share, Volume).                                                | Implicitly filtered by latest year data. (**Note:** Not exported by default) |
+| *(Potentially) **Provider Counts** *  | Yearly count of unique providers/subcontractors in institution's markets.                             | None. (**Note:** Not exported by default) |
 | *(Other sheets may be present depending on the analysis results and configuration)* |
 
 ## Example Output Structure (Column Names)
@@ -137,20 +144,32 @@ Column names within each sheet are also configurable via `config.yaml` under `co
     *   `Viimeisen vuoden volyymi`
     *   `Vuosia datassa`
 
-5.  **Qual Market YoY Growth Sheet Content**:
+5.  **(Potential) Qual Market YoY Growth Sheet Content**:
     *   `Tutkinto`
     *   `Vuosi`
     *   `Markkina yhteensä`
     *   `Markkina yhteensä YoY Growth (%)`
+
+6.  **(Potential) BCG Data Sheet Content**:
+    *   `Tutkinto`
+    *   `Market Growth (%)`
+    *   `Relative Market Share`
+    *   `Institution Volume`
+
+7.  **(Potential) Provider Counts Sheet Content**:
+    *   `Vuosi`
+    *   `Unique_Providers_Count` (or config name)
+    *   `Unique_Subcontractors_Count` (or config name)
 
 ## Export File Path Structure
 
 The Excel files are saved using the FileUtils directory structure:
 
 ```
-data/
-└── reports/
-    └── [institution_short_name]_education_market_analysis_[timestamp].xlsx
+data/\
+└── reports/\
+    └── education_market_[institution_short_name]/\
+        └── [institution_short_name]_market_analysis_[timestamp].xlsx\
 ```
 
 The timestamp format in the filename is configurable through the FileUtils settings.
@@ -168,14 +187,16 @@ The export system automatically handles special values that might cause Excel ex
 For advanced customization, you can pass additional parameters to the export function:
 
 ```python
-export_to_excel(
-    excel_data,
-    f"{institution_short_name}_market_analysis",
-    output_type="reports",
-    index=False,
+export_analysis_results(\
+    analysis_results, \
+    config, \
+    institution_short_name, \
+    base_output_path,\
+    # Additional kwargs for FileUtils.save_data_to_storage\
+    index=False,\
     float_format="%.2f",  # Format floating-point numbers
     freeze_panes=(1, 0)   # Freeze header row
-)
+)\
 ```
 
 ## Troubleshooting Excel Export
@@ -185,4 +206,5 @@ Common issues and solutions:
 1. **Missing FileUtils package**: Ensure FileUtils is installed (`pip install FileUtils`)
 2. **Export path errors**: Check that FileUtils is properly configured with valid directories
 3. **Data format errors**: Ensure DataFrames don't contain problematic data types
-4. **Large file warnings**: For very large datasets, consider splitting the export into multiple files 
+4. **Large file warnings**: For very large datasets, consider splitting the export into multiple files
+5. **Sheet Name/Key Mismatches**: Ensure the sheet names defined in `config.yaml` correspond correctly to the keys in the `analysis_results` dictionary if customizing the export logic.

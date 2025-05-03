@@ -11,29 +11,43 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+def find_project_root(marker='.git') -> Optional[Path]:
+    """Find the project root directory by looking upwards for a marker file/directory."""
+    current_path = Path(__file__).resolve()
+    while current_path != current_path.parent: # Stop at the filesystem root
+        if (current_path / marker).exists():
+            return current_path
+        current_path = current_path.parent
+    # If marker not found, maybe return None or raise error
+    logger.error(f"Project root marker '{marker}' not found starting from {Path(__file__).resolve()}.")
+    return None # Or raise an exception
+
 def get_config_path() -> Path:
     """
-    Get the path to the configuration file.
-    
-    Checks multiple possible locations for config.yaml file.
-    
+    Get the path to the configuration file (config.yaml) expected at the project root.
+
     Returns:
-        Path: Path to the configuration file
+        Path: Path to the configuration file.
+    Raises:
+        FileNotFoundError: If the project root or config.yaml cannot be found.
     """
-    # Look in several possible locations
-    possible_locations = [
-        Path("config.yaml"),
-        Path("config/config.yaml"),
-        Path(__file__).parent / "config.yaml",
-        Path.home() / ".vipunen" / "config.yaml",
-    ]
-    
-    for path in possible_locations:
-        if path.exists():
-            return path
-    
-    # Default to the one in the package
-    return Path(__file__).parent / "config.yaml"
+    project_root = find_project_root()
+    if project_root:
+        config_path = project_root / "config.yaml"
+        if config_path.exists():
+            logger.info(f"Found config at project root: {config_path}")
+            return config_path
+        else:
+            msg = f"config.yaml not found at project root: {project_root}"
+            logger.error(msg)
+            raise FileNotFoundError(msg)
+    else:
+        # Handle case where project root wasn't found
+        msg = "Could not determine project root to find config.yaml."
+        logger.error(msg)
+        # As a fallback, maybe try the original relative path? Or just error out.
+        # For simplicity, let's raise an error here.
+        raise FileNotFoundError(msg)
 
 def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
     """
@@ -47,15 +61,22 @@ def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
         Dict[str, Any]: Configuration dictionary
     """
     if config_path is None:
-        config_path = get_config_path()
-    
+        try:
+            config_path = get_config_path() # Try to find it using the new logic
+        except FileNotFoundError as e:
+             # If get_config_path fails (e.g., no root found), fall back to default
+            logger.warning(f"Could not find config.yaml via project root: {e}")
+            logger.warning("Using default configuration")
+            return _get_default_config()
+
+    # Proceed with loading if path was found
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             config = yaml.safe_load(f)
         logger.info(f"Loaded configuration from {config_path}")
         return config
     except Exception as e:
-        # Fall back to default configuration
+        # Fall back to default configuration if loading fails for other reasons
         logger.warning(f"Failed to load config from {config_path}: {e}")
         logger.warning("Using default configuration")
         return _get_default_config()
@@ -125,7 +146,7 @@ def get_config() -> Dict[str, Any]:
     """
     global _config
     if _config is None:
-        _config = load_config()
+        _config = load_config() # load_config now handles finding the path or defaulting
     return _config
 
 def reload_config() -> Dict[str, Any]:
@@ -136,5 +157,5 @@ def reload_config() -> Dict[str, Any]:
         Dict[str, Any]: Freshly loaded configuration dictionary
     """
     global _config
-    _config = load_config()
+    _config = load_config() # load_config now handles finding the path or defaulting
     return _config 

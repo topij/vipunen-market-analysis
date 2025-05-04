@@ -148,9 +148,11 @@ if not analysis_results.get("detailed_providers_market", pd.DataFrame()).empty:
         visualizer.close_pdf() # Ensure PDF is closed
     print(f"Visualizations saved in {viz_dir}")
 
-```
+### Notebook Analysis
 
-See the [Tutorial](docs/TUTORIAL.md) and `src/vipunen/cli/analyze_cli.py` for more detailed examples.
+For a more interactive, step-by-step analysis workflow, see the Jupyter Notebooks in the `notebooks/` directory. These notebooks replicate the core analysis and allow for easier exploration of intermediate results and visualizations.
+
+Refer to the **[Notebooks README](notebooks/README.md)** for detailed instructions on configuration and execution.
 
 ## Architecture Overview
 

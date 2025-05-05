@@ -14,6 +14,7 @@ import datetime # Added for date parsing
 import matplotlib.pyplot as plt # Add import
 import numpy as np
 import plotly.graph_objects as go
+import re # Add import for regex
 
 from ..config.config_loader import get_config
 from ..data.data_loader import load_data
@@ -31,6 +32,13 @@ from ..visualization.education_visualizer import EducationVisualizer, COLOR_PALE
 #     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 # )
 logger = logging.getLogger(__name__)
+
+def _generate_short_name(full_name: str) -> str:
+    """Generates a short name by removing spaces and non-alphanumeric chars."""
+    # Remove non-alphanumeric characters (keep letters and numbers)
+    clean_name = re.sub(r'[^a-zA-Z0-9]', '', full_name)
+    # Optionally, truncate if it's too long
+    return clean_name[:15] # Example: limit to 15 chars
 
 # --- Refactored Helper Functions ---
 
@@ -58,42 +66,71 @@ def prepare_analysis_data(
     
     # Step 1: Define parameters for the analysis from config and args
     data_file_path = args.get('data_file', config['paths']['data'])
-    
-    # Determine the institution key
-    default_institution_name = config['institutions']['default']['name']
-    arg_institution_value = args.get('institution') 
-    
-    if arg_institution_value is None or arg_institution_value == default_institution_name:
-        institution_key = 'default'
-        logger.info(f"Using default institution key: '{institution_key}'")
-    else:
-        institution_key = arg_institution_value
-        logger.info(f"Using institution key from args: '{institution_key}'")
-        if institution_key not in config['institutions']:
-            msg = f"Provided institution key '{institution_key}' not found in config['institutions']. Aborting."
-            logger.error(msg)
-            raise KeyError(msg)
-            
-    # Get short_name
-    institution_short_name = args.get('short_name', config['institutions'][institution_key]['short_name'])
     use_dummy = args.get('use_dummy', False)
     filter_qual_types = args.get('filter_qual_types', False)
-    # filter_by_inst_quals = args.get('filter_by_inst_quals', False) # This filtering happens below now
 
-    # Get institution variants
-    if 'variants' in args and args['variants']:
-        institution_variants = list(args['variants'])
-        main_name = config['institutions'][institution_key]['name']
-        if main_name not in institution_variants:
-            institution_variants.append(main_name)
+    # --- Determine Institution Details ---
+    default_institution_key = 'default'
+    default_institution_config = config['institutions'].get(default_institution_key, {})
+    default_institution_name = default_institution_config.get('name')
+    default_short_name = default_institution_config.get('short_name')
+
+    arg_institution_name = args.get('institution') # Explicit name from args
+    arg_variants = args.get('variants') # List from args, could be empty
+    arg_short_name = args.get('short_name') # Explicit short name from args
+
+    # Use default if no specific institution is given via args
+    if arg_institution_name is None or arg_institution_name == default_institution_name:
+        institution_key = default_institution_key # Used only for logging if config exists
+        institution_name = default_institution_name
+        # Use config values for variants and short_name if available
+        institution_variants = default_institution_config.get('variants', [])
+        institution_short_name = default_short_name
+
+        # Ensure the main name is in variants if using default config
+        if institution_name and institution_name not in institution_variants:
+            institution_variants.append(institution_name)
+        logger.info(f"Using default institution: '{institution_name}' (Short: {institution_short_name})")
+
     else:
-        institution_variants = config['institutions'][institution_key].get('variants', [])
-        main_name = config['institutions'][institution_key]['name']
-        if main_name not in institution_variants:
-            institution_variants.append(main_name)
+        # Use the institution name provided via args
+        institution_key = arg_institution_name # Use the name itself as a key/identifier
+        institution_name = arg_institution_name
+        logger.info(f"Using institution from args: '{institution_name}'")
 
-    logger.info(f"Analyzing institution key: {institution_key} (Name: {config['institutions'][institution_key]['name']})")
-    logger.info(f"Institution variants used for matching: {institution_variants}")
+        # Determine variants: Use arg_variants if provided, else default to [institution_name]
+        if arg_variants and isinstance(arg_variants, list) and len(arg_variants) > 0:
+            institution_variants = list(arg_variants)
+            # Ensure the main institution name is included
+            if institution_name not in institution_variants:
+                institution_variants.append(institution_name)
+        else:
+            institution_variants = [institution_name] # Default to the name itself
+            logger.info("No variants provided via args, using institution name as the only variant.")
+
+        # Determine short name: Use arg_short_name if provided, else generate from institution_name
+        if arg_short_name and arg_short_name != default_short_name: # Check against default from config
+            institution_short_name = arg_short_name
+        else:
+            institution_short_name = _generate_short_name(institution_name)
+            logger.info(f"No short name provided via args, generated: '{institution_short_name}'")
+
+    # Validate that we have essential names
+    if not institution_name:
+         raise ValueError("Could not determine institution name from args or config.")
+    if not institution_short_name:
+         # This case should be rare due to generation logic, but good to have
+         institution_short_name = _generate_short_name(institution_name) 
+         logger.warning(f"Institution short name was unexpectedly empty, generated: '{institution_short_name}'")
+    if not institution_variants:
+         institution_variants = [institution_name] # Fallback
+         logger.warning("Institution variants list was unexpectedly empty, using institution name as variant.")
+
+    logger.info(f"Final institution name: {institution_name}")
+    logger.info(f"Final institution short name: {institution_short_name}")
+    logger.info(f"Final institution variants: {institution_variants}")
+
+    # --- End Determine Institution Details ---
 
     # Step 2: Load the raw data
     logger.info(f"Loading raw data from {data_file_path}")
@@ -695,7 +732,7 @@ def run_analysis_workflow(args: Dict[str, Any]) -> Dict[str, Any]:
     logger.info("Creating metadata for export...")
     metadata = {
         "Analysis Timestamp": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "Institution Analyzed": f"{config['institutions'][institution_key]['name']} ({institution_short_name})",
+        "Institution Analyzed": f"{institution_key} ({institution_short_name})",
         "Institution Variants Used": ", ".join(institution_variants),
         "Input Data File": args.get('data_file', config.get('paths',{}).get('data', 'N/A')),
         "Data Update Date": data_update_date_str,

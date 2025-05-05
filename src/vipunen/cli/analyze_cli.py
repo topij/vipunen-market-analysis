@@ -21,7 +21,7 @@ from ..data.data_loader import load_data
 from ..data.data_processor import clean_and_prepare_data
 from ..export.excel_exporter import export_to_excel
 from ..analysis.market_analyzer import MarketAnalyzer
-from .argument_parser import parse_arguments, get_institution_variants
+from .argument_parser import parse_arguments
 # Import Visualizer and constants
 from ..visualization.education_visualizer import EducationVisualizer, COLOR_PALETTES, TEXT_CONSTANTS
 

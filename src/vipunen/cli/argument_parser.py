@@ -91,30 +91,4 @@ def parse_arguments(args_list: Optional[List[str]] = None) -> argparse.Namespace
     )
     
     # Parse arguments (from args_list if provided, else from sys.argv)
-    return parser.parse_args(args_list)
-
-def get_institution_variants(args: argparse.Namespace, config: Dict[str, Any]) -> List[str]:
-    """
-    Get the institution name variants, combining command-line arguments with config defaults.
-    
-    Args:
-        args: Parsed command-line arguments
-        config: Configuration dictionary
-        
-    Returns:
-        list: List of institution name variants
-    """
-    # Use variants from command line if provided
-    if args.variants:
-        variants = list(args.variants)
-        # Add the main institution name if not already included
-        if args.institution not in variants:
-            variants.append(args.institution)
-        return variants
-    
-    # Otherwise use defaults from config
-    variants = config['institutions']['default'].get('variants', [])
-    if args.institution not in variants:
-        variants.append(args.institution)
-    
-    return variants 
+    return parser.parse_args(args_list) 

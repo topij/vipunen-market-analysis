@@ -282,7 +282,7 @@ See `environment.yaml` for a full list and versions.
 
 ## FileUtils Integration
 
-This project utilizes the [FileUtils](https://github.com/topi-python/FileUtils) package for standardized file operations like loading data and saving reports/plots. This aims to provide consistent path handling and directory structures. The configuration is managed in `src/vipunen/utils/file_utils_config.py`.
+This project utilizes the [FileUtils](https://github.com/topij/FileUtils) package for standardized file operations like loading data and saving reports/plots. This aims to provide consistent path handling and directory structures. The configuration is managed in `src/vipunen/utils/file_utils_config.py`.
 
 ## Troubleshooting
 

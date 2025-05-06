@@ -414,6 +414,10 @@ class MarketAnalyzer:
         # Select the present columns in the desired order
         final_df = final_df[final_columns_present]
 
+        # Filter out rows where the provider's total volume for the qualification is zero
+        if self.cols_out['total_volume'] in final_df.columns:
+            final_df = final_df[final_df[self.cols_out['total_volume']] > 0]
+
         # Sort final output
         final_df = final_df.sort_values(
             by=[self.cols_out['year'], self.cols_out['qualification'], self.cols_out['market_rank']],

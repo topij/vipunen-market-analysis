@@ -34,13 +34,13 @@ The analysis is configured using the `ANALYSIS_PARAMS` dictionary defined in one
 ```python
 ANALYSIS_PARAMS = {
     'data_file': None, # Use default from config
-    'institution': "Rastor-instituutti ry",
-    'institution_short_name': "RI",
-    'institution_variants': ["Rastor Oy"], # Match these names
+    'institution': "Rastor-instituutti ry", # Main name to match
+    'institution_short_name': "RI", 
+    'institution_variants': ["Rastor Oy"], # Match also these names
     'use_dummy': False,
     'filter_qual_types': False,
     'output_dir': None, # Use default from config
-    'include_timestamp': True
+    'include_timestamp': True # timestamp in output filename
 }
 ```
 

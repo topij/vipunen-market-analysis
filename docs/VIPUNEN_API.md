@@ -4,7 +4,7 @@ This document describes how to obtain data using the Vipunen API.
 
 ## Obtaining Data from Vipunen API
 
-Vipunen data can be accessed through the REST/JSON. This project contains fetching script which interacts directly with the Vipunen API to get the latest vocational education market data.
+Vipunen data can be accessed through the public REST/JSON API provided by the Finnish education administrations. This project contains fetching script which interacts directly with the Vipunen API to get the latest vocational education market data.
 
 **Script:** `src/scripts/fetch_data.py`
 

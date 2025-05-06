@@ -18,7 +18,6 @@ Vipunen data can be accessed through the public REST/JSON API provided by the Fi
 **Configuration:**
 API connection details (base URL, caller ID, retry settings, timeouts) and output formatting (CSV separator, encoding, backup directory name) are configured in the `api` section of `config/config.yaml`. When fetching data, it is good practice to identify your organization with the caller ID. You can define that in the config.yaml file with `caller_id: "organisaatio_oid.organisaationimi"`
 
-
 **Usage:**
 ```bash
 # Fetch default dataset specified in config

@@ -82,7 +82,9 @@ api:
   max_retries: 3
   retry_delay: 5 # seconds
   timeout: 60 # seconds increased timeout
-  caller_id: "0201689-0.rastor-instituutti" # TODO: Consider moving to environment variable
+  # It is recommended to use a caller ID identifying who is requesting the data.
+  # "organisaatio_oid.organisaationimi"
+  caller_id: ""
   backup_dir_name: "old_api_calls_output"
   csv_separator: ";"
   csv_encoding: "utf-8"

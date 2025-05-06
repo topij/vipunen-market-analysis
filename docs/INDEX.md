@@ -14,6 +14,7 @@ Welcome to the Vipunen Project documentation! This documentation provides compre
 ### Data and Analysis
 
 - [Data Requirements](DATA_REQUIREMENTS.md) - Input data format and specifications
+- [Vipunen API Data Fetching](VIPUNEN_API.md) - How to fetch data using the Vipunen API
 - [Market Analysis Features](MARKET_ANALYSIS.md) - Available market analysis functionality
 - [Excel Export Functionality](EXCEL_EXPORT.md) - How to export results to Excel
 - [Visualization Features](VISUALIZATION.md) - Basic visualization capabilities

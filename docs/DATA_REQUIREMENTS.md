@@ -101,36 +101,7 @@ The dummy data maintains the same structure as the expected input format.
 
 ## Obtaining Data from Vipunen API
 
-While the raw CSV data can sometimes be found pre-downloaded, the recommended way to obtain the latest data is using the provided fetching script which interacts directly with the Vipunen API.
-
-**Script:** `src/scripts/fetch_data.py`
-
-**Functionality:**
-- Connects to the Vipunen API.
-- Downloads data for a specified dataset (defaults to `amm_opiskelijat_ja_tutkinnot_vuosi_tutkinto`).
-- Saves the data into a CSV file in the configured raw data directory (default: `data/raw/`).
-- **Update Check:** Before downloading, the script checks a metadata file (`.metadata/{dataset_name}_metadata.json`) for the last known update timestamp of the data on the API. If the timestamp hasn't changed, the download is skipped to save time and resources.
-- **Backup:** If a new download occurs, the previous version of the CSV file is backed up into a subdirectory (default: `old_api_calls_output`).
-
-**Configuration:**
-API connection details (base URL, caller ID, retry settings, timeouts) and output formatting (CSV separator, encoding, backup directory name) are configured in the `api` section of `config/config.yaml`.
-
-**Usage:**
-```bash
-# Fetch default dataset specified in config
-python src/scripts/fetch_data.py
-
-# Fetch a specific dataset
-python src/scripts/fetch_data.py --dataset other_dataset_name
-
-# Specify output directory
-python src/scripts/fetch_data.py --output-dir path/to/save
-
-# Force download even if update date hasn't changed
-python src/scripts/fetch_data.py --force-download
-```
-
-Refer to the [CLI Guide](CLI_GUIDE.md) for more script details.
+For details on fetching data from the Vipunen API, please see the [Vipunen API Data Fetching](VIPUNEN_API.md) guide.
 
 ## Common Data Issues and Solutions
 
